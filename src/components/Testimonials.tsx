@@ -1,0 +1,60 @@
+import { Star } from 'lucide-react';
+
+const testimonials = [
+  {
+    name: 'Dr. Sarah Jenkins',
+    role: 'Principal, Oakwood Academy',
+    content: 'ExamSync has completely transformed how we handle end-of-term examinations. The automated grading alone has saved our teachers hundreds of hours.',
+    image: 'https://picsum.photos/seed/sarah/100/100',
+  },
+  {
+    name: 'Mark Thompson',
+    role: 'Exam Officer, City High School',
+    content: 'The real-time analytics provide insights we never had before. We can now identify struggling students instantly and provide targeted support.',
+    image: 'https://picsum.photos/seed/mark/100/100',
+  },
+  {
+    name: 'Linda Chen',
+    role: 'IT Director, Global International',
+    content: 'Integration was seamless. The Supabase-backed infrastructure gives us peace of mind regarding data security and system reliability.',
+    image: 'https://picsum.photos/seed/linda/100/100',
+  },
+];
+
+export const Testimonials = () => {
+  return (
+    <section id="testimonials" className="py-24 bg-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center mb-16">
+          <h2 className="text-blue-600 font-semibold tracking-wide uppercase text-sm mb-3">Success Stories</h2>
+          <p className="text-4xl font-bold text-gray-900 mb-4">Trusted by Leading Educators</p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {testimonials.map((t) => (
+            <div key={t.name} className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex gap-1 mb-6">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                ))}
+              </div>
+              <p className="text-gray-600 italic mb-8 leading-relaxed">"{t.content}"</p>
+              <div className="flex items-center gap-4">
+                <img
+                  src={t.image}
+                  alt={t.name}
+                  className="w-12 h-12 rounded-full object-cover"
+                  referrerPolicy="no-referrer"
+                />
+                <div>
+                  <p className="font-bold text-gray-900">{t.name}</p>
+                  <p className="text-xs text-gray-500">{t.role}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+};
