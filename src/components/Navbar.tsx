@@ -18,10 +18,10 @@ export const Navbar = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-20">
           <div className="flex items-center gap-2">
-            <div className="bg-blue-600 p-2 rounded-lg">
+            <div className="bg-kenya-green p-2 rounded-lg">
               <GraduationCap className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-bold text-gray-900 tracking-tight">ExamSync</span>
+            <span className="text-2xl font-bold text-kenya-black tracking-tight">ExamSync <span className="text-kenya-red">KE</span></span>
           </div>
 
           {/* Desktop Nav */}
@@ -30,7 +30,7 @@ export const Navbar = () => {
               <a
                 key={link.name}
                 href={link.href}
-                className="text-sm font-medium text-gray-600 hover:text-blue-600 transition-colors"
+                className="text-sm font-medium text-gray-600 hover:text-kenya-green transition-colors"
               >
                 {link.name}
               </a>
@@ -45,7 +45,7 @@ export const Navbar = () => {
           <div className="md:hidden">
             <button
               onClick={() => setIsOpen(!isOpen)}
-              className="p-2 text-gray-600 hover:text-blue-600"
+              className="p-2 text-gray-600 hover:text-kenya-green"
             >
               {isOpen ? <X /> : <Menu />}
             </button>

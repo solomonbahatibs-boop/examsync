@@ -23,11 +23,12 @@ const testimonials = [
 
 export const Testimonials = () => {
   return (
-    <section id="testimonials" className="py-24 bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="testimonials" className="py-24 bg-gray-50 relative">
+      <div className="absolute inset-0 opacity-[0.01] pointer-events-none" style={{ backgroundImage: 'var(--background-kenya-pattern)', backgroundSize: '80px 80px' }} />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="text-center mb-16">
-          <h2 className="text-blue-600 font-semibold tracking-wide uppercase text-sm mb-3">Success Stories</h2>
-          <p className="text-4xl font-bold text-gray-900 mb-4">Trusted by Leading Educators</p>
+          <h2 className="text-kenya-green font-semibold tracking-wide uppercase text-sm mb-3">Success Stories</h2>
+          <p className="text-4xl font-bold text-kenya-black mb-4">Trusted by Leading Kenyan Educators</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -35,7 +36,7 @@ export const Testimonials = () => {
             <div key={t.name} className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex gap-1 mb-6">
                 {[...Array(5)].map((_, i) => (
-                  <Star key={i} className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                  <Star key={i} className="w-4 h-4 fill-kenya-red text-kenya-red" />
                 ))}
               </div>
               <p className="text-gray-600 italic mb-8 leading-relaxed">"{t.content}"</p>

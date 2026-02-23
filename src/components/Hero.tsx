@@ -7,8 +7,9 @@ export const Hero = () => {
     <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 overflow-hidden">
       {/* Background Elements */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full -z-10">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-100/50 rounded-full blur-3xl" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-50 rounded-full blur-3xl" />
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-kenya-red/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-kenya-green/5 rounded-full blur-3xl" />
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'var(--background-kenya-pattern)', backgroundSize: '20px 20px' }} />
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -18,15 +19,15 @@ export const Hero = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-50 text-blue-700 text-sm font-semibold mb-6">
-              <Zap className="w-4 h-4 fill-blue-700" />
-              The Future of School Examinations
+            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-kenya-green/10 text-kenya-green text-sm font-semibold mb-6 border border-kenya-green/20">
+              <Zap className="w-4 h-4 fill-kenya-green" />
+              The Future of Kenyan School Examinations
             </span>
-            <h1 className="text-5xl lg:text-7xl font-bold text-gray-900 tracking-tight leading-[1.1] mb-6">
-              Automate Your Exams with <span className="text-blue-600">Precision & Ease</span>
+            <h1 className="text-5xl lg:text-7xl font-bold text-kenya-black tracking-tight leading-[1.1] mb-6">
+              Automate Your Exams with <span className="text-kenya-green">Kenyan</span> <span className="text-kenya-red">Innovation</span>
             </h1>
             <p className="text-xl text-gray-600 mb-10 leading-relaxed max-w-2xl mx-auto">
-              ExamSync empowers schools with a secure, cloud-based platform to create, manage, and grade exams automatically. Real-time results, deep analytics, and zero paperwork.
+              ExamSync empowers Kenyan schools with a secure, cloud-based platform to create, manage, and grade exams automatically. Real-time results, deep analytics, and zero paperwork.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
               <Button size="lg" className="w-full sm:w-auto">Start Free Trial</Button>
@@ -43,10 +44,10 @@ export const Hero = () => {
             transition={{ duration: 0.8, delay: 0.2 }}
             className="relative"
           >
-            <div className="absolute -inset-1 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl blur opacity-20" />
+            <div className="absolute -inset-1 bg-gradient-to-r from-kenya-black via-kenya-red to-kenya-green rounded-2xl blur opacity-20" />
             <div className="relative bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
               <img
-                src="https://picsum.photos/seed/examsync-dash/1200/800"
+                src="https://picsum.photos/seed/examsync-dash-ke/1200/800"
                 alt="ExamSync Dashboard Preview"
                 className="w-full h-auto"
                 referrerPolicy="no-referrer"
@@ -56,20 +57,20 @@ export const Hero = () => {
             {/* Floating Badges */}
             <div className="absolute -bottom-6 -left-6 hidden lg:flex items-center gap-3 bg-white p-4 rounded-xl shadow-lg border border-gray-100">
               <div className="bg-green-100 p-2 rounded-lg">
-                <ShieldCheck className="w-6 h-6 text-green-600" />
+                <ShieldCheck className="w-6 h-6 text-kenya-green" />
               </div>
               <div className="text-left">
-                <p className="text-sm font-bold text-gray-900">Secure & Encrypted</p>
+                <p className="text-sm font-bold text-kenya-black">Secure & Encrypted</p>
                 <p className="text-xs text-gray-500">GDPR Compliant</p>
               </div>
             </div>
 
             <div className="absolute -top-6 -right-6 hidden lg:flex items-center gap-3 bg-white p-4 rounded-xl shadow-lg border border-gray-100">
-              <div className="bg-blue-100 p-2 rounded-lg">
-                <CheckCircle2 className="w-6 h-6 text-blue-600" />
+              <div className="bg-red-100 p-2 rounded-lg">
+                <CheckCircle2 className="w-6 h-6 text-kenya-red" />
               </div>
               <div className="text-left">
-                <p className="text-sm font-bold text-gray-900">Real-time Results</p>
+                <p className="text-sm font-bold text-kenya-black">Real-time Results</p>
                 <p className="text-xs text-gray-500">Instant Grading</p>
               </div>
             </div>

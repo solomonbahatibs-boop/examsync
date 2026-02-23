@@ -35,28 +35,29 @@ export const SuperAdminLogin = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
       {/* Background Decorations */}
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none -z-10">
-        <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-100/50 rounded-full blur-3xl" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-50 rounded-full blur-3xl" />
+        <div className="absolute top-[-10%] right-[-10%] w-[40%] h-[40%] bg-kenya-red/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-kenya-green/5 rounded-full blur-3xl" />
+        <div className="absolute inset-0 opacity-[0.02] pointer-events-none" style={{ backgroundImage: 'var(--background-kenya-pattern)', backgroundSize: '30px 30px' }} />
       </div>
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <Link to="/" className="flex items-center justify-center gap-2 mb-8 group">
-          <div className="bg-blue-600 p-2 rounded-lg group-hover:scale-110 transition-transform">
+          <div className="bg-kenya-green p-2 rounded-lg group-hover:scale-110 transition-transform">
             <GraduationCap className="w-8 h-8 text-white" />
           </div>
-          <span className="text-3xl font-bold text-gray-900 tracking-tight">ExamSync</span>
+          <span className="text-3xl font-bold text-kenya-black tracking-tight">ExamSync <span className="text-kenya-red">KE</span></span>
         </Link>
         
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white py-8 px-4 shadow-2xl shadow-blue-100 sm:rounded-3xl sm:px-10 border border-gray-100"
+          className="bg-white py-8 px-4 shadow-2xl shadow-kenya-black/5 sm:rounded-3xl sm:px-10 border border-gray-100"
         >
           <div className="mb-8 text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-50 text-red-600 mb-4">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-kenya-red/10 text-kenya-red mb-4">
               <ShieldAlert className="w-6 h-6" />
             </div>
-            <h2 className="text-2xl font-bold text-gray-900">Super Admin Access</h2>
+            <h2 className="text-2xl font-bold text-kenya-black">Super Admin Access</h2>
             <p className="mt-2 text-sm text-gray-500">
               Please enter your credentials to access the management console.
             </p>
@@ -67,7 +68,7 @@ export const SuperAdminLogin = () => {
               <motion.div
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded-xl text-sm flex items-center gap-2"
+                className="bg-kenya-red/10 border border-kenya-red/20 text-kenya-red px-4 py-3 rounded-xl text-sm flex items-center gap-2"
               >
                 <ShieldAlert className="w-4 h-4" />
                 {error}
@@ -89,7 +90,7 @@ export const SuperAdminLogin = () => {
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="block w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-gray-50/50"
+                  className="block w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-kenya-black placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-kenya-green focus:border-transparent transition-all bg-gray-50/50"
                   placeholder="admin"
                 />
               </div>
@@ -110,7 +111,7 @@ export const SuperAdminLogin = () => {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-gray-50/50"
+                  className="block w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-kenya-black placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-kenya-green focus:border-transparent transition-all bg-gray-50/50"
                   placeholder="••••••••"
                 />
               </div>
@@ -122,7 +123,7 @@ export const SuperAdminLogin = () => {
                   id="remember-me"
                   name="remember-me"
                   type="checkbox"
-                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                  className="h-4 w-4 text-kenya-green focus:ring-kenya-green border-gray-300 rounded"
                 />
                 <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
                   Remember me
@@ -130,7 +131,7 @@ export const SuperAdminLogin = () => {
               </div>
 
               <div className="text-sm">
-                <a href="#" className="font-medium text-blue-600 hover:text-blue-500">
+                <a href="#" className="font-medium text-kenya-red hover:text-red-700">
                   Forgot password?
                 </a>
               </div>
@@ -148,7 +149,7 @@ export const SuperAdminLogin = () => {
           <div className="mt-8 pt-6 border-t border-gray-100">
             <Link
               to="/"
-              className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-blue-600 transition-colors"
+              className="flex items-center justify-center gap-2 text-sm text-gray-500 hover:text-kenya-green transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to Landing Page
