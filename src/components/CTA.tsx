@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Button } from './Button';
 
 export const CTA = () => {
@@ -15,12 +16,14 @@ export const CTA = () => {
               Transform Your School Examination Process Today
             </h2>
             <p className="text-gray-300 text-lg mb-10 leading-relaxed">
-              Join 500+ Kenyan schools that have already automated their exams with ExamSync. Start your 14-day free trial now. No credit card required.
+              Join 500+ Kenyan schools that have already automated their exams with Alakara. Transform your institution today.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-              <Button variant="primary" size="lg" className="w-full sm:w-auto">
-                Start Free Trial
-              </Button>
+              <Link to="/login">
+                <Button variant="primary" size="lg" className="w-full sm:w-auto">
+                  Get Started Now
+                </Button>
+              </Link>
               <Button variant="ghost" size="lg" className="w-full sm:w-auto text-white hover:bg-white/10">
                 Talk to an Expert
               </Button>

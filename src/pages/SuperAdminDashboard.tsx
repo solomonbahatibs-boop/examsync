@@ -46,7 +46,7 @@ export const SuperAdminDashboard = () => {
           <div className="bg-kenya-green p-1.5 rounded-lg">
             <GraduationCap className="w-6 h-6 text-white" />
           </div>
-          <span className="text-xl font-bold text-kenya-black tracking-tight">ExamSync <span className="text-kenya-red">KE</span></span>
+          <span className="text-xl font-bold text-kenya-black tracking-tight">Alakara <span className="text-kenya-red">KE</span></span>
         </div>
 
         <nav className="flex-1 p-4 space-y-1">

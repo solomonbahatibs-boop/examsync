@@ -1,5 +1,6 @@
 import { motion } from 'motion/react';
 import { CheckCircle2, Play, ShieldCheck, Zap } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Button } from './Button';
 
 export const Hero = () => {
@@ -24,13 +25,15 @@ export const Hero = () => {
               The Future of Kenyan School Examinations
             </span>
             <h1 className="text-5xl lg:text-7xl font-bold text-kenya-black tracking-tight leading-[1.1] mb-6">
-              Automate Your Exams with <span className="text-kenya-green">Kenyan</span> <span className="text-kenya-red">Innovation</span>
+              Automate Your Exams with <span className="text-kenya-green">Alakara</span> <span className="text-kenya-red">Innovation</span>
             </h1>
             <p className="text-xl text-gray-600 mb-10 leading-relaxed max-w-2xl mx-auto">
-              ExamSync empowers Kenyan schools with a secure, cloud-based platform to create, manage, and grade exams automatically. Real-time results, deep analytics, and zero paperwork.
+              Alakara empowers Kenyan schools with a secure, cloud-based platform to create, manage, and grade exams automatically. Real-time results, deep analytics, and zero paperwork.
             </p>
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-              <Button size="lg" className="w-full sm:w-auto">Start Free Trial</Button>
+              <Link to="/login">
+                <Button size="lg" className="w-full sm:w-auto">Get Started</Button>
+              </Link>
               <Button variant="outline" size="lg" className="w-full sm:w-auto gap-2">
                 <Play className="w-5 h-5 fill-current" />
                 Watch Demo
@@ -47,8 +50,8 @@ export const Hero = () => {
             <div className="absolute -inset-1 bg-gradient-to-r from-kenya-black via-kenya-red to-kenya-green rounded-2xl blur opacity-20" />
             <div className="relative bg-white rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
               <img
-                src="https://picsum.photos/seed/examsync-dash-ke/1200/800"
-                alt="ExamSync Dashboard Preview"
+                src="https://picsum.photos/seed/alakara-dash-ke/1200/800"
+                alt="Alakara KE Dashboard Preview"
                 className="w-full h-auto"
                 referrerPolicy="no-referrer"
               />

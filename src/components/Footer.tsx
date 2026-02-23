@@ -11,7 +11,7 @@ export const Footer = () => {
               <div className="bg-kenya-green p-2 rounded-lg group-hover:scale-110 transition-transform">
                 <GraduationCap className="w-6 h-6 text-white" />
               </div>
-              <span className="text-2xl font-bold text-white tracking-tight">ExamSync <span className="text-kenya-red">KE</span></span>
+              <span className="text-2xl font-bold text-white tracking-tight">Alakara <span className="text-kenya-red">KE</span></span>
             </Link>
             <p className="text-sm leading-relaxed mb-6">
               The leading cloud-based exam management system for modern Kenyan schools. Automate grading, track performance, and publish results with ease.
@@ -28,8 +28,8 @@ export const Footer = () => {
             <h4 className="text-white font-bold mb-6">Product</h4>
             <ul className="space-y-4 text-sm">
               <li><a href="#features" className="hover:text-white transition-colors">Features</a></li>
+              <li><a href="#exams-resources" className="hover:text-white transition-colors">Exams & Resources</a></li>
               <li><a href="#" className="hover:text-white transition-colors">Integrations</a></li>
-              <li><a href="#pricing" className="hover:text-white transition-colors">Pricing</a></li>
               <li><a href="#" className="hover:text-white transition-colors">Changelog</a></li>
             </ul>
           </div>
@@ -43,8 +43,12 @@ export const Footer = () => {
                   Super Admin Login
                 </Link>
               </li>
-              <li><a href="#" className="hover:text-white transition-colors">Teacher Portal</a></li>
-              <li><a href="#" className="hover:text-white transition-colors">Student Portal</a></li>
+              <li>
+                <Link to="/teacher-login" className="hover:text-white transition-colors">Teacher Portal</Link>
+              </li>
+              <li>
+                <Link to="/student-login" className="hover:text-white transition-colors">Student Portal</Link>
+              </li>
             </ul>
           </div>
 
@@ -60,7 +64,7 @@ export const Footer = () => {
         </div>
 
         <div className="pt-8 border-t border-gray-800 flex flex-col md:flex-row justify-between items-center gap-4 text-xs">
-          <p>© 2026 ExamSync Inc. All rights reserved.</p>
+          <p>© 2026 Alakara KE Inc. All rights reserved.</p>
           <div className="flex gap-8">
             <a href="#" className="hover:text-white transition-colors">Privacy</a>
             <a href="#" className="hover:text-white transition-colors">Terms</a>

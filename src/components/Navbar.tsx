@@ -1,6 +1,7 @@
 import { motion } from 'motion/react';
 import { GraduationCap, Menu, X } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Button } from './Button';
 
 export const Navbar = () => {
@@ -9,7 +10,7 @@ export const Navbar = () => {
   const navLinks = [
     { name: 'Features', href: '#features' },
     { name: 'How It Works', href: '#how-it-works' },
-    { name: 'Pricing', href: '#pricing' },
+    { name: 'Exams & Resources', href: '#exams-resources' },
     { name: 'Testimonials', href: '#testimonials' },
   ];
 
@@ -21,7 +22,7 @@ export const Navbar = () => {
             <div className="bg-kenya-green p-2 rounded-lg">
               <GraduationCap className="w-6 h-6 text-white" />
             </div>
-            <span className="text-2xl font-bold text-kenya-black tracking-tight">ExamSync <span className="text-kenya-red">KE</span></span>
+            <span className="text-2xl font-bold text-kenya-black tracking-tight">Alakara <span className="text-kenya-red">KE</span></span>
           </div>
 
           {/* Desktop Nav */}
@@ -36,8 +37,9 @@ export const Navbar = () => {
               </a>
             ))}
             <div className="flex items-center gap-4 ml-4">
-              <Button variant="ghost" size="sm">Login</Button>
-              <Button size="sm">Start Free Trial</Button>
+              <Link to="/login">
+                <Button variant="ghost" size="sm">Login</Button>
+              </Link>
             </div>
           </div>
 
@@ -71,8 +73,9 @@ export const Navbar = () => {
             </a>
           ))}
           <div className="flex flex-col gap-3 pt-4 border-t border-gray-100">
-            <Button variant="outline" className="w-full">Login</Button>
-            <Button className="w-full">Start Free Trial</Button>
+            <Link to="/login" onClick={() => setIsOpen(false)}>
+              <Button variant="outline" className="w-full">Login</Button>
+            </Link>
           </div>
         </motion.div>
       )}
