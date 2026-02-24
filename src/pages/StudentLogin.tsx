@@ -19,7 +19,7 @@ export const StudentLogin = () => {
     setTimeout(() => {
       if (username === 'student' && password === 'student123') {
         setIsLoading(false);
-        navigate('/'); // Placeholder
+        navigate('/student/dashboard');
       } else {
         setError('Check your Admission Number or Password!');
         setIsLoading(false);
