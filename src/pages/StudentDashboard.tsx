@@ -9,7 +9,8 @@ import {
   Download,
   FileText,
   Star,
-  Clock
+  Clock,
+  ShieldCheck
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
@@ -18,6 +19,7 @@ export const StudentDashboard = () => {
   const navigate = useNavigate();
   const [materials, setMaterials] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'learning' | 'exams' | 'results' | 'materials'>('learning');
 
   useEffect(() => {
     const loadMaterials = () => {
@@ -57,15 +59,31 @@ export const StudentDashboard = () => {
           </div>
 
           <nav className="space-y-4">
-            <button className="w-full flex items-center gap-4 px-6 py-4 bg-white text-black font-black uppercase tracking-widest shadow-[8px_8px_0px_0px_rgba(0,255,0,1)] transition-all">
+            <button 
+              onClick={() => setActiveTab('learning')}
+              className={`w-full flex items-center gap-4 px-6 py-4 font-black uppercase tracking-widest transition-all ${activeTab === 'learning' ? 'bg-white text-black shadow-[8px_8px_0px_0px_rgba(0,255,0,1)]' : 'text-white hover:bg-white/10'}`}
+            >
               <LayoutDashboard className="w-6 h-6" />
               My Learning
             </button>
-            <button className="w-full flex items-center gap-4 px-6 py-4 text-white hover:bg-white/10 font-black uppercase tracking-widest transition-all">
+            <button 
+              onClick={() => setActiveTab('materials')}
+              className={`w-full flex items-center gap-4 px-6 py-4 font-black uppercase tracking-widest transition-all ${activeTab === 'materials' ? 'bg-white text-black shadow-[8px_8px_0px_0px_rgba(0,255,0,1)]' : 'text-white hover:bg-white/10'}`}
+            >
+              <FileText className="w-6 h-6" />
+              Approved Materials
+            </button>
+            <button 
+              onClick={() => setActiveTab('exams')}
+              className={`w-full flex items-center gap-4 px-6 py-4 font-black uppercase tracking-widest transition-all ${activeTab === 'exams' ? 'bg-white text-black shadow-[8px_8px_0px_0px_rgba(0,255,0,1)]' : 'text-white hover:bg-white/10'}`}
+            >
               <BookOpen className="w-6 h-6" />
               Exams
             </button>
-            <button className="w-full flex items-center gap-4 px-6 py-4 text-white hover:bg-white/10 font-black uppercase tracking-widest transition-all">
+            <button 
+              onClick={() => setActiveTab('results')}
+              className={`w-full flex items-center gap-4 px-6 py-4 font-black uppercase tracking-widest transition-all ${activeTab === 'results' ? 'bg-white text-black shadow-[8px_8px_0px_0px_rgba(0,255,0,1)]' : 'text-white hover:bg-white/10'}`}
+            >
               <Star className="w-6 h-6" />
               Results
             </button>
@@ -113,60 +131,75 @@ export const StudentDashboard = () => {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-10 bg-[#f0f0f0]">
-          <div className="mb-12">
-            <h1 className="text-5xl font-black text-black uppercase tracking-tighter italic mb-4">Approved Learning Materials</h1>
-            <div className="h-4 w-48 bg-[#FF6321] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {filteredMaterials.map((material, index) => (
-              <motion.div
-                key={material.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="bg-white border-4 border-black p-8 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-2 hover:translate-y-2 transition-all group"
-              >
-                <div className="flex justify-between items-start mb-6">
-                  <div className="w-16 h-16 bg-black flex items-center justify-center group-hover:rotate-12 transition-transform">
-                    <FileText className="w-8 h-8 text-white" />
-                  </div>
-                  <span className="bg-kenya-green text-white px-4 py-1 font-black uppercase text-xs border-2 border-black">
-                    {material.fileType}
-                  </span>
-                </div>
-
-                <h3 className="text-2xl font-black text-black uppercase tracking-tight mb-2 leading-none">
-                  {material.title}
-                </h3>
-                <p className="text-sm font-bold text-[#FF6321] uppercase mb-6">
-                  {material.subject}
-                </p>
-
-                <div className="space-y-3 mb-8">
-                  <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase">
-                    <Clock className="w-4 h-4" />
-                    Uploaded {material.uploadDate}
-                  </div>
-                  <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase">
-                    <GraduationCap className="w-4 h-4" />
-                    By {material.teacherName}
-                  </div>
-                </div>
-
-                <Button className="w-full bg-black hover:bg-gray-800 text-white py-4 rounded-none font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-[4px_4px_0px_0px_rgba(255,99,33,1)]">
-                  <Download className="w-5 h-5" />
-                  Download Now
-                </Button>
-              </motion.div>
-            ))}
-
-            {filteredMaterials.length === 0 && (
-              <div className="col-span-full py-20 text-center border-8 border-dashed border-black/10">
-                <p className="text-3xl font-black text-black/20 uppercase italic">No materials available yet</p>
+          {activeTab === 'materials' ? (
+            <>
+              <div className="mb-12">
+                <h1 className="text-5xl font-black text-black uppercase tracking-tighter italic mb-4">Approved Learning Materials</h1>
+                <div className="h-4 w-48 bg-[#FF6321] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" />
               </div>
-            )}
-          </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {filteredMaterials.map((material, index) => (
+                  <motion.div
+                    key={material.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="bg-white border-4 border-black p-8 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-2 hover:translate-y-2 transition-all group"
+                  >
+                    <div className="flex justify-between items-start mb-6">
+                      <div className="w-16 h-16 bg-black flex items-center justify-center group-hover:rotate-12 transition-transform">
+                        <FileText className="w-8 h-8 text-white" />
+                      </div>
+                      <span className="bg-kenya-green text-white px-4 py-1 font-black uppercase text-xs border-2 border-black">
+                        {material.fileType}
+                      </span>
+                    </div>
+
+                    <h3 className="text-2xl font-black text-black uppercase tracking-tight mb-2 leading-none">
+                      {material.title}
+                    </h3>
+                    <p className="text-sm font-bold text-[#FF6321] uppercase mb-6">
+                      {material.subject}
+                    </p>
+
+                    <div className="space-y-3 mb-8">
+                      <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase">
+                        <Clock className="w-4 h-4" />
+                        Uploaded {material.uploadDate}
+                      </div>
+                      <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase">
+                        <GraduationCap className="w-4 h-4" />
+                        By {material.teacherName} ({material.schoolName})
+                      </div>
+                    </div>
+
+                    <Button className="w-full bg-black hover:bg-gray-800 text-white py-4 rounded-none font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-[4px_4px_0px_0px_rgba(255,99,33,1)]">
+                      <Download className="w-5 h-5" />
+                      Download Now
+                    </Button>
+                  </motion.div>
+                ))}
+
+                {filteredMaterials.length === 0 && (
+                  <div className="col-span-full py-20 text-center border-8 border-dashed border-black/10">
+                    <p className="text-3xl font-black text-black/20 uppercase italic">No materials available yet</p>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="w-32 h-32 bg-black flex items-center justify-center mb-8 rotate-3">
+                <ShieldCheck className="w-16 h-16 text-white" />
+              </div>
+              <h2 className="text-4xl font-black text-black uppercase tracking-tighter mb-4 italic">Section Under Maintenance</h2>
+              <p className="text-xl font-bold text-gray-500 uppercase max-w-md">
+                We're currently updating your {activeTab} portal to bring you a better learning experience!
+              </p>
+              <div className="mt-12 h-4 w-64 bg-[#FF6321] shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]" />
+            </div>
+          )}
         </div>
       </main>
     </div>

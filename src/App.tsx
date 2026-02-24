@@ -15,6 +15,7 @@ import { SuperAdminDashboard } from './pages/SuperAdminDashboard';
 import { PrincipalLogin } from './pages/PrincipalLogin';
 import { PrincipalDashboard } from './pages/PrincipalDashboard';
 import { StudentDashboard } from './pages/StudentDashboard';
+import { TeacherDashboard } from './pages/TeacherDashboard';
 
 const LandingPage = () => (
   <>
@@ -40,6 +41,7 @@ export default function App() {
           <Route path="/login" element={<LoginChoice />} />
           <Route path="/super-admin" element={<SuperAdminLogin />} />
           <Route path="/teacher-login" element={<TeacherLogin />} />
+          <Route path="/teacher/dashboard" element={<TeacherDashboard />} />
           <Route path="/student-login" element={<StudentLogin />} />
           <Route path="/student/dashboard" element={<StudentDashboard />} />
           <Route path="/principal-login" element={<PrincipalLogin />} />

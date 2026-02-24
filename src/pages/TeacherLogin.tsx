@@ -19,7 +19,7 @@ export const TeacherLogin = () => {
     setTimeout(() => {
       if (username === 'teacher' && password === 'teacher123') {
         setIsLoading(false);
-        navigate('/'); // Placeholder
+        navigate('/teacher/dashboard');
       } else {
         setError('Invalid teacher credentials');
         setIsLoading(false);
