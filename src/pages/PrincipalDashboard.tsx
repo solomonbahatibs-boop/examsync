@@ -58,10 +58,11 @@ export const PrincipalDashboard = () => {
   const navigate = useNavigate();
   const [school, setSchool] = useState<any>(null);
   const [isSuspended, setIsSuspended] = useState(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'staff' | 'students' | 'academic' | 'settings'>('dashboard');
-  const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports'>('overview');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'staff' | 'students' | 'academic' | 'settings' | 'classes'>('dashboard');
+  const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports' | 'edit-marks'>('overview');
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [showAddClassModal, setShowAddClassModal] = useState(false);
   const [students, setStudents] = useState<any[]>(() => {
     const saved = localStorage.getItem('alakara_students');
     if (saved) return JSON.parse(saved);
@@ -73,6 +74,25 @@ export const PrincipalDashboard = () => {
 
   const [newStudent, setNewStudent] = useState({ name: '', adm: '', class: 'Form 1' });
   const [editingStudent, setEditingStudent] = useState<any>(null);
+
+  const [classes, setClasses] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_classes');
+    if (saved) return JSON.parse(saved);
+    return [
+      { id: '1', name: 'Form 1', teacherId: '1', capacity: 40 },
+      { id: '2', name: 'Form 2', teacherId: '2', capacity: 40 },
+      { id: '3', name: 'Form 3', teacherId: '3', capacity: 40 },
+      { id: '4', name: 'Form 4', teacherId: '', capacity: 40 },
+      { id: '5', name: 'Grade 7', teacherId: '', capacity: 40 },
+      { id: '6', name: 'Grade 8', teacherId: '', capacity: 40 },
+    ];
+  });
+  const [newClass, setNewClass] = useState({ name: '', teacherId: '', capacity: 40 });
+  const [editingClass, setEditingClass] = useState<any>(null);
+
+  useEffect(() => {
+    localStorage.setItem('alakara_classes', JSON.stringify(classes));
+  }, [classes]);
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
   const [studentSortBy, setStudentSortBy] = useState<'name' | 'adm'>('name');
   const [studentSortOrder, setStudentSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -85,6 +105,12 @@ export const PrincipalDashboard = () => {
   const [showEditMarksModal, setShowEditMarksModal] = useState(false);
   const [selectedMarksStudent, setSelectedMarksStudent] = useState<any>(null);
   const [editingMarks, setEditingMarks] = useState<any>({}); // {examId: score}
+  const [editMarksConfig, setEditMarksConfig] = useState({
+    examId: '',
+    className: '',
+    subject: ''
+  });
+  const [classMarks, setClassMarks] = useState<any>({}); // {studentId: score}
 
   useEffect(() => {
     localStorage.setItem('alakara_marks', JSON.stringify(marks));
@@ -304,6 +330,34 @@ export const PrincipalDashboard = () => {
     setShowAddStudentModal(true);
   };
 
+  const handleAddClass = (e: FormEvent) => {
+    e.preventDefault();
+    if (editingClass) {
+      setClasses(classes.map(c => c.id === editingClass.id ? { ...editingClass, ...newClass } : c));
+      setEditingClass(null);
+    } else {
+      const cls = {
+        id: Math.random().toString(36).substr(2, 9),
+        ...newClass
+      };
+      setClasses([...classes, cls]);
+    }
+    setNewClass({ name: '', teacherId: '', capacity: 40 });
+    setShowAddClassModal(false);
+  };
+
+  const openEditClass = (cls: any) => {
+    setEditingClass(cls);
+    setNewClass({ name: cls.name, teacherId: cls.teacherId || '', capacity: cls.capacity || 40 });
+    setShowAddClassModal(true);
+  };
+
+  const removeClass = (id: string) => {
+    if (window.confirm('Are you sure you want to remove this class?')) {
+      setClasses(classes.filter(c => c.id !== id));
+    }
+  };
+
   const handleBulkStudentUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -408,6 +462,12 @@ export const PrincipalDashboard = () => {
     }
   };
 
+  const recallExam = (id: string) => {
+    if (window.confirm('Are you sure you want to recall this exam? Teachers will be able to edit marks again.')) {
+      setExams(exams.map(e => e.id === id ? { ...e, status: 'Active' } : e));
+    }
+  };
+
   const deleteExam = (id: string) => {
     if (window.confirm('Delete this exam? All associated marks will be lost.')) {
       setExams(exams.filter(e => e.id !== id));
@@ -473,6 +533,50 @@ export const PrincipalDashboard = () => {
     });
     setEditingMarks(marksMap);
     setShowEditMarksModal(true);
+  };
+
+  const loadClassMarks = () => {
+    if (!editMarksConfig.examId || !editMarksConfig.className || !editMarksConfig.subject) return;
+    
+    const relevantMarks = marks.filter(m => 
+      m.examId === editMarksConfig.examId && 
+      m.subject === editMarksConfig.subject
+    );
+    
+    const marksMap: any = {};
+    relevantMarks.forEach(m => {
+      marksMap[m.studentId] = m.score;
+    });
+    
+    setClassMarks(marksMap);
+  };
+
+  useEffect(() => {
+    loadClassMarks();
+  }, [editMarksConfig.examId, editMarksConfig.className, editMarksConfig.subject, marks]);
+
+  const saveClassMarks = () => {
+    if (!editMarksConfig.examId || !editMarksConfig.className || !editMarksConfig.subject) return;
+
+    const newMarks = marks.filter(m => 
+      !(m.examId === editMarksConfig.examId && m.subject === editMarksConfig.subject && students.find(s => s.id === m.studentId)?.class === editMarksConfig.className)
+    );
+
+    Object.entries(classMarks).forEach(([studentId, score]) => {
+      if (score !== '' && score !== null && score !== undefined) {
+        newMarks.push({
+          id: `${editMarksConfig.examId}-${studentId}-${editMarksConfig.subject}`,
+          examId: editMarksConfig.examId,
+          studentId,
+          score: score.toString(),
+          subject: editMarksConfig.subject,
+          updatedAt: new Date().toISOString()
+        });
+      }
+    });
+
+    setMarks(newMarks);
+    alert('Marks updated successfully!');
   };
 
   const saveStudentMarks = () => {
@@ -609,6 +713,14 @@ export const PrincipalDashboard = () => {
             >
               <UserCheck className="w-5 h-5" />
               Student Management
+            </button>
+            <button 
+              onClick={() => setActiveTab('classes')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all ${isSuspended ? 'opacity-50 cursor-not-allowed' : activeTab === 'classes' ? 'bg-kenya-green text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`} 
+              disabled={isSuspended}
+            >
+              <Library className="w-5 h-5" />
+              Class Management
             </button>
             <button 
               onClick={() => setActiveTab('academic')}
@@ -908,14 +1020,6 @@ export const PrincipalDashboard = () => {
                                 <td className="px-6 py-4 text-right">
                                   <div className="flex items-center justify-end gap-2">
                                     <button 
-                                      onClick={() => openEditMarks(student)}
-                                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-kenya-green hover:text-white transition-all"
-                                      title="Manage Marks"
-                                    >
-                                      <ClipboardList className="w-3 h-3" />
-                                      Marks
-                                    </button>
-                                    <button 
                                       onClick={() => openEditStudent(student)}
                                       className="p-2 text-gray-400 hover:text-kenya-green transition-colors"
                                       title="Edit Student"
@@ -949,6 +1053,69 @@ export const PrincipalDashboard = () => {
                   )}
                 </div>
               </div>
+            ) : activeTab === 'classes' ? (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold text-kenya-black">Class Management</h2>
+                    <p className="text-gray-500">Create and manage classes and assign class teachers.</p>
+                  </div>
+                  <Button onClick={() => setShowAddClassModal(true)} className="gap-2">
+                    <Plus className="w-4 h-4" />
+                    Add New Class
+                  </Button>
+                </div>
+
+                <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-gray-50 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                        <th className="px-6 py-4">Class Name</th>
+                        <th className="px-6 py-4">Class Teacher</th>
+                        <th className="px-6 py-4">Capacity</th>
+                        <th className="px-6 py-4">Students Enrolled</th>
+                        <th className="px-6 py-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {classes.map((cls) => {
+                        const teacher = staff.find(s => s.id === cls.teacherId);
+                        const enrolled = students.filter(s => s.class === cls.name).length;
+                        return (
+                          <tr key={cls.id} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-6 py-4 font-bold text-kenya-black">{cls.name}</td>
+                            <td className="px-6 py-4 text-gray-600">{teacher ? teacher.name : <span className="text-gray-400 italic">Not Assigned</span>}</td>
+                            <td className="px-6 py-4 text-gray-600">{cls.capacity}</td>
+                            <td className="px-6 py-4">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${enrolled >= cls.capacity ? 'bg-kenya-red/10 text-kenya-red' : 'bg-kenya-green/10 text-kenya-green'}`}>
+                                {enrolled} / {cls.capacity}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button 
+                                  onClick={() => openEditClass(cls)}
+                                  className="p-2 text-gray-400 hover:text-kenya-green transition-colors"
+                                  title="Edit Class"
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                                <button 
+                                  onClick={() => removeClass(cls.id)}
+                                  className="p-2 text-gray-400 hover:text-kenya-red transition-colors"
+                                  title="Remove Class"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             ) : activeTab === 'academic' ? (
               <div className="space-y-8">
                 <div className="flex items-center justify-between">
@@ -969,6 +1136,7 @@ export const PrincipalDashboard = () => {
                       { id: 'create-exam', title: 'Create New Exam', desc: 'Schedule and set up new examinations.', icon: PlusCircle, color: 'text-kenya-green', bg: 'bg-kenya-green/10' },
                       { id: 'learning-area', title: 'Learning Areas', desc: 'Manage subjects and curriculum areas.', icon: Library, color: 'text-blue-600', bg: 'bg-blue-50' },
                       { id: 'grading', title: 'Grading System', desc: 'Define grade boundaries and scales.', icon: ClipboardList, color: 'text-orange-600', bg: 'bg-orange-50' },
+                      { id: 'edit-marks', title: 'Edit Marks', desc: 'Modify student marks by subject.', icon: Edit, color: 'text-yellow-600', bg: 'bg-yellow-50' },
                       { id: 'analysis', title: 'Analyse Results', desc: 'Deep dive into student performance data.', icon: BarChart3, color: 'text-kenya-red', bg: 'bg-kenya-red/10' },
                       { id: 'reports', title: 'Generate Report Cards', desc: 'Produce and distribute student reports.', icon: FileSpreadsheet, color: 'text-purple-600', bg: 'bg-purple-50' },
                     ].map((item) => (
@@ -1032,18 +1200,18 @@ export const PrincipalDashboard = () => {
                       <div className="space-y-3">
                         <label className="text-sm font-bold text-kenya-black">Target Classes</label>
                         <div className="grid grid-cols-3 gap-3">
-                          {['Form 1', 'Form 2', 'Form 3', 'Form 4', 'Grade 7', 'Grade 8'].map((cls) => (
+                          {classes.map((c) => (
                             <button
-                              key={cls}
+                              key={c.id}
                               type="button"
-                              onClick={() => toggleClassSelection(cls)}
+                              onClick={() => toggleClassSelection(c.name)}
                               className={`px-4 py-2 rounded-xl text-sm font-bold border transition-all ${
-                                newExam.classes.includes(cls)
+                                newExam.classes.includes(c.name)
                                   ? 'bg-kenya-green text-white border-kenya-green'
                                   : 'bg-gray-50 text-gray-500 border-gray-200 hover:border-kenya-green/50'
                               }`}
                             >
-                              {cls}
+                              {c.name}
                             </button>
                           ))}
                         </div>
@@ -1327,13 +1495,21 @@ export const PrincipalDashboard = () => {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                   <div className="flex items-center justify-end gap-2">
-                                    {exam.status === 'Active' && (
+                                    {exam.status === 'Active' ? (
                                       <button 
                                         onClick={() => processExam(exam.id)}
                                         className="p-2 text-kenya-green hover:bg-kenya-green/10 rounded-lg transition-colors"
                                         title="Process & Lock Marks"
                                       >
                                         <CheckCircle2 className="w-4 h-4" />
+                                      </button>
+                                    ) : (
+                                      <button 
+                                        onClick={() => recallExam(exam.id)}
+                                        className="p-2 text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
+                                        title="Recall Exam"
+                                      >
+                                        <ArrowUpDown className="w-4 h-4" />
                                       </button>
                                     )}
                                     <button 
@@ -1351,6 +1527,88 @@ export const PrincipalDashboard = () => {
                         </table>
                       </div>
                     </div>
+                  </div>
+                ) : academicSubTab === 'edit-marks' ? (
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                    <h3 className="text-xl font-bold text-kenya-black mb-6">Edit Student Marks</h3>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                      <select 
+                        value={editMarksConfig.examId}
+                        onChange={(e) => setEditMarksConfig({...editMarksConfig, examId: e.target.value})}
+                        className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                      >
+                        <option value="">Select Examination...</option>
+                        {exams.map(e => (
+                          <option key={e.id} value={e.id}>{e.title} ({e.term} {e.year})</option>
+                        ))}
+                      </select>
+
+                      <select 
+                        value={editMarksConfig.className}
+                        onChange={(e) => setEditMarksConfig({...editMarksConfig, className: e.target.value})}
+                        className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                      >
+                        <option value="">Select Class...</option>
+                        {classes.map(c => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+
+                      <select 
+                        value={editMarksConfig.subject}
+                        onChange={(e) => setEditMarksConfig({...editMarksConfig, subject: e.target.value})}
+                        className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                      >
+                        <option value="">Select Subject...</option>
+                        {learningAreas.map(la => (
+                          <option key={la} value={la}>{la}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {editMarksConfig.examId && editMarksConfig.className && editMarksConfig.subject ? (
+                      <div className="space-y-6">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left border-collapse">
+                            <thead>
+                              <tr className="bg-gray-50 text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
+                                <th className="px-6 py-4">Adm No</th>
+                                <th className="px-6 py-4">Student Name</th>
+                                <th className="px-6 py-4 w-48">Score (%)</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {students.filter(s => s.class === editMarksConfig.className).map(student => (
+                                <tr key={student.id} className="hover:bg-gray-50/50 transition-colors">
+                                  <td className="px-6 py-4 font-mono text-sm text-gray-500">{student.adm}</td>
+                                  <td className="px-6 py-4 font-bold text-kenya-black">{student.name}</td>
+                                  <td className="px-6 py-4">
+                                    <input 
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      value={classMarks[student.id] || ''}
+                                      onChange={(e) => setClassMarks({...classMarks, [student.id]: e.target.value})}
+                                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold"
+                                      placeholder="--"
+                                    />
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="flex justify-end pt-4 border-t border-gray-100">
+                          <Button onClick={saveClassMarks}>Save Marks</Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
+                        <Edit className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                        <p className="text-gray-400 font-medium italic">Please select an exam, class, and subject to edit marks.</p>
+                      </div>
+                    )}
                   </div>
                 ) : academicSubTab === 'reports' ? (
                   <div className="max-w-4xl mx-auto space-y-8">
@@ -1808,20 +2066,20 @@ export const PrincipalDashboard = () => {
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-kenya-black ml-1">Assigned Classes</label>
                   <div className="grid grid-cols-2 gap-2">
-                    {['Form 1', 'Form 2', 'Form 3', 'Form 4', 'Grade 7', 'Grade 8'].map(c => (
-                      <label key={c} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-100 cursor-pointer">
+                    {classes.map(c => (
+                      <label key={c.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-100 cursor-pointer">
                         <input 
                           type="checkbox"
-                          checked={newStaff.assignedClasses.includes(c)}
+                          checked={newStaff.assignedClasses.includes(c.name)}
                           onChange={(e) => {
-                            const classes = e.target.checked 
-                              ? [...newStaff.assignedClasses, c]
-                              : newStaff.assignedClasses.filter(cls => cls !== c);
-                            setNewStaff({...newStaff, assignedClasses: classes});
+                            const classesList = e.target.checked 
+                              ? [...newStaff.assignedClasses, c.name]
+                              : newStaff.assignedClasses.filter(cls => cls !== c.name);
+                            setNewStaff({...newStaff, assignedClasses: classesList});
                           }}
                           className="w-4 h-4 rounded border-gray-300 text-kenya-green focus:ring-kenya-green"
                         />
-                        <span className="text-xs font-medium text-gray-600">{c}</span>
+                        <span className="text-xs font-medium text-gray-600">{c.name}</span>
                       </label>
                     ))}
                   </div>
@@ -1878,12 +2136,9 @@ export const PrincipalDashboard = () => {
                     onChange={(e) => setNewStudent({...newStudent, class: e.target.value})}
                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
                   >
-                    <option value="Form 1">Form 1</option>
-                    <option value="Form 2">Form 2</option>
-                    <option value="Form 3">Form 3</option>
-                    <option value="Form 4">Form 4</option>
-                    <option value="Grade 7">Grade 7</option>
-                    <option value="Grade 8">Grade 8</option>
+                    {classes.map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
                   </select>
                 </div>
                 <Button type="submit" className="w-full py-4 rounded-xl font-bold">{editingStudent ? 'Update Learner' : 'Register Learner'}</Button>
@@ -1891,6 +2146,63 @@ export const PrincipalDashboard = () => {
             </motion.div>
           </div>
         )}
+        {/* Add Class Modal */}
+        {showAddClassModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-kenya-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl border border-gray-100"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-2xl font-bold text-kenya-black">{editingClass ? 'Edit Class' : 'Add New Class'}</h3>
+                <button onClick={() => { setShowAddClassModal(false); setEditingClass(null); setNewClass({ name: '', teacherId: '', capacity: 40 }); }} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddClass} className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-kenya-black ml-1">Class Name</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={newClass.name}
+                    onChange={(e) => setNewClass({...newClass, name: e.target.value})}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                    placeholder="e.g. Form 1A"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-kenya-black ml-1">Class Teacher</label>
+                  <select 
+                    value={newClass.teacherId}
+                    onChange={(e) => setNewClass({...newClass, teacherId: e.target.value})}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                  >
+                    <option value="">-- Select Teacher --</option>
+                    {staff.map(s => (
+                      <option key={s.id} value={s.id}>{s.name} ({s.role})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-kenya-black ml-1">Capacity</label>
+                  <input 
+                    type="number" 
+                    required
+                    min="1"
+                    value={newClass.capacity}
+                    onChange={(e) => setNewClass({...newClass, capacity: parseInt(e.target.value)})}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                  />
+                </div>
+                <Button type="submit" className="w-full py-4 rounded-xl font-bold">{editingClass ? 'Update Class' : 'Create Class'}</Button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
         {/* Edit Marks Modal */}
         {showEditMarksModal && selectedMarksStudent && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-kenya-black/60 backdrop-blur-sm">
