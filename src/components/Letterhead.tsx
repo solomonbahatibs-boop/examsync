@@ -11,7 +11,7 @@ interface SchoolSettings {
   letterheadTemplate: string;
 }
 
-export const Letterhead: React.FC<{ settings: SchoolSettings }> = ({ settings }) => {
+export const Letterhead: React.FC<{ settings: SchoolSettings; studentPhoto?: string }> = ({ settings, studentPhoto }) => {
   const renderLogo = (size: string = "w-20 h-20") => {
     if (settings.logo) {
       return <img src={settings.logo} alt="School Logo" className={`${size} object-contain mx-auto`} />;
@@ -19,6 +19,15 @@ export const Letterhead: React.FC<{ settings: SchoolSettings }> = ({ settings })
     return (
       <div className={`${size} mx-auto border-2 border-dashed border-gray-300 rounded-xl flex items-center justify-center text-[8px] text-gray-400 font-bold text-center p-2 uppercase`}>
         Affix School Logo
+      </div>
+    );
+  };
+
+  const renderStudentPhoto = (size: string = "w-20 h-20") => {
+    if (!studentPhoto) return null;
+    return (
+      <div className="absolute right-0 top-0">
+        <img src={studentPhoto} alt="Student" className={`${size} object-cover rounded-lg border-2 border-gray-100 shadow-sm`} />
       </div>
     );
   };
@@ -31,6 +40,7 @@ export const Letterhead: React.FC<{ settings: SchoolSettings }> = ({ settings })
         <div className="absolute left-0 top-0">
           {renderLogo("w-24 h-24")}
         </div>
+        {renderStudentPhoto("w-24 h-24")}
         <div className="flex flex-col items-center">
           <img src={coatOfArms} alt="Coat of Arms" className="w-12 h-12 object-contain mb-2" />
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em]">Republic of Kenya</p>
@@ -55,6 +65,7 @@ export const Letterhead: React.FC<{ settings: SchoolSettings }> = ({ settings })
           <div className="absolute left-0 top-0">
             {renderLogo("w-16 h-16")}
           </div>
+          {renderStudentPhoto("w-16 h-16")}
           <img src={coatOfArms} alt="Coat of Arms" className="w-10 h-10 object-contain mb-2" />
           <p className="text-[8px] font-bold text-gray-400 uppercase tracking-widest mb-1">Republic of Kenya • Ministry of Education</p>
           <h2 className="text-2xl font-black text-kenya-black uppercase tracking-tighter">{settings.name || 'SCHOOL NAME'}</h2>
@@ -74,6 +85,7 @@ export const Letterhead: React.FC<{ settings: SchoolSettings }> = ({ settings })
         <div className="absolute left-0 top-0">
           {renderLogo("w-20 h-20")}
         </div>
+        {renderStudentPhoto("w-20 h-20")}
         <div className="flex flex-col items-center mb-4">
           <img src={coatOfArms} alt="Coat of Arms" className="w-16 h-16 object-contain mb-2" />
           <p className="text-[9px] font-bold text-gray-500 uppercase tracking-[0.4em]">Republic of Kenya</p>
@@ -98,6 +110,7 @@ export const Letterhead: React.FC<{ settings: SchoolSettings }> = ({ settings })
         <div className="absolute left-6 top-6">
           {renderLogo("w-20 h-20 bg-white rounded-xl p-1")}
         </div>
+        {renderStudentPhoto("w-20 h-20")}
         <div className="flex flex-col items-center mb-4">
           <img src={coatOfArms} alt="Coat of Arms" className="w-16 h-16 object-contain bg-white rounded-full p-1 mb-2" />
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.3em]">Republic of Kenya</p>
@@ -122,6 +135,7 @@ export const Letterhead: React.FC<{ settings: SchoolSettings }> = ({ settings })
         <div className="absolute left-0 top-0">
           {renderLogo("w-12 h-12")}
         </div>
+        {renderStudentPhoto("w-12 h-12")}
         <img src={coatOfArms} alt="Coat of Arms" className="w-10 h-10 object-contain mb-1" />
         <h2 className="text-xl font-black text-kenya-black uppercase tracking-tight leading-none">{settings.name || 'SCHOOL NAME'}</h2>
         <p className="text-[10px] font-bold text-kenya-green italic mb-2">"{settings.motto || 'School Motto'}"</p>
@@ -140,6 +154,7 @@ export const Letterhead: React.FC<{ settings: SchoolSettings }> = ({ settings })
       <div className="absolute left-0 top-0">
         {renderLogo("w-20 h-20")}
       </div>
+      {renderStudentPhoto("w-20 h-20")}
       <div className="flex flex-col items-center mb-4">
         <img src={coatOfArms} alt="Coat of Arms" className="w-16 h-16 object-contain mb-2" />
         <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.3em]">Republic of Kenya</p>
