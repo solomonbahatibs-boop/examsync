@@ -61,6 +61,7 @@ export const PrincipalDashboard = () => {
   const navigate = useNavigate();
   const [school, setSchool] = useState<any>(null);
   const [isSuspended, setIsSuspended] = useState(false);
+  const [daysToExpiry, setDaysToExpiry] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'staff' | 'students' | 'academic' | 'settings' | 'classes'>('dashboard');
   const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports'>('overview');
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
@@ -224,7 +225,22 @@ export const PrincipalDashboard = () => {
       
       if (updatedSchool) {
         setSchool(updatedSchool);
-        setIsSuspended(updatedSchool.status === 'Suspended');
+        
+        // Check subscription expiry
+        const expiryDate = updatedSchool.subscriptionExpiresAt ? new Date(updatedSchool.subscriptionExpiresAt) : null;
+        const now = new Date();
+        const isExpired = expiryDate ? expiryDate < now : false;
+        
+        setIsSuspended(updatedSchool.status === 'Suspended' || isExpired);
+
+        if (expiryDate) {
+          const diffTime = expiryDate.getTime() - now.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          setDaysToExpiry(diffDays);
+        } else {
+          setDaysToExpiry(null);
+        }
+
         setSchoolSettings({
           name: updatedSchool.name || '',
           motto: updatedSchool.motto || '',
@@ -855,6 +871,27 @@ export const PrincipalDashboard = () => {
 
         {/* Dashboard Content */}
         <div className="flex-1 overflow-y-auto p-8 relative">
+          {daysToExpiry !== null && daysToExpiry <= 15 && daysToExpiry > 0 && !isSuspended && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="mb-8 bg-amber-500 p-6 rounded-[2rem] text-white shadow-xl flex flex-col md:flex-row items-center gap-6 border-4 border-white/20"
+            >
+              <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-md">
+                <AlertTriangle className="w-10 h-10 text-white" />
+              </div>
+              <div className="flex-1 text-center md:text-left">
+                <h3 className="text-xl font-black uppercase tracking-tight">Subscription Expiring Soon</h3>
+                <p className="font-bold text-white/90">
+                  Your system access will be automatically suspended in <span className="text-2xl font-black underline decoration-white/40">{daysToExpiry} days</span>.
+                </p>
+              </div>
+              <div className="bg-white/10 px-6 py-3 rounded-2xl font-black text-xl border border-white/20">
+                Expires: {new Date(school.subscriptionExpiresAt).toLocaleDateString()}
+              </div>
+            </motion.div>
+          )}
+
           {isSuspended && (
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -865,9 +902,13 @@ export const PrincipalDashboard = () => {
                 <AlertTriangle className="w-16 h-16 text-white animate-pulse" />
               </div>
               <div className="flex-1 text-center md:text-left">
-                <h2 className="text-3xl font-black mb-2 uppercase tracking-tight">Account Suspended</h2>
+                <h2 className="text-3xl font-black mb-2 uppercase tracking-tight">
+                  {daysToExpiry !== null && daysToExpiry <= 0 ? 'Subscription Expired' : 'Account Suspended'}
+                </h2>
                 <p className="text-xl font-bold text-white/90 mb-6">
-                  Access to school management features has been restricted by the system administrator.
+                  {daysToExpiry !== null && daysToExpiry <= 0 
+                    ? 'Your school subscription has expired. Please renew to regain access to management features.'
+                    : 'Access to school management features has been restricted by the system administrator.'}
                 </p>
                 <div className="inline-flex items-center gap-4 bg-white text-kenya-red px-8 py-4 rounded-2xl font-black text-2xl shadow-lg">
                   <Phone className="w-8 h-8" />
