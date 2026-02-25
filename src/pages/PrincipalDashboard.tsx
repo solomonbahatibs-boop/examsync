@@ -2478,6 +2478,29 @@ export const PrincipalDashboard = () => {
                   </div>
                 </div>
 
+                {editingStaff && editingStaff.mustChangePassword && (
+                  <div className="p-4 bg-yellow-50 border border-yellow-100 rounded-xl space-y-2">
+                    <div className="flex items-center gap-2 text-yellow-700">
+                      <ShieldAlert className="w-4 h-4" />
+                      <span className="text-[10px] font-black uppercase tracking-wider">Default Password</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <code className="text-lg font-black text-kenya-black tracking-widest">{editingStaff.password}</code>
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(editingStaff.password);
+                          alert('Password copied to clipboard');
+                        }}
+                        className="text-[10px] font-bold text-kenya-green uppercase hover:underline"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-yellow-600 italic">This password will expire after the teacher's first successful login.</p>
+                  </div>
+                )}
+
                 <Button type="submit" className="w-full py-4 rounded-xl font-bold">{editingStaff ? 'Update Member' : 'Register Member'}</Button>
               </form>
             </motion.div>
