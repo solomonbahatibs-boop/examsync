@@ -43,6 +43,7 @@ import {
 import { useState, FormEvent, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { NotificationBell, addNotification } from '../components/NotificationBell';
 
 interface School {
   id: string;
@@ -255,6 +256,13 @@ export const SuperAdminDashboard = () => {
     setSchools([school, ...schools]);
     setGeneratedCreds({ principal: creds.principal, teacher: creds.teacher, pass: creds.pass });
     setNewSchool({ name: '', location: '', students: '' });
+
+    addNotification({
+      title: 'New School Registered',
+      message: `${school.name} has been successfully registered on the platform.`,
+      type: 'success',
+      role: 'super-admin'
+    });
   };
 
   const handleAddStory = (e: FormEvent) => {
@@ -290,6 +298,23 @@ export const SuperAdminDashboard = () => {
     setSchools(schools.map(school => {
       if (school.id === id) {
         const nextStatus = school.status === 'Active' ? 'Suspended' : 'Active';
+        
+        addNotification({
+          title: `School ${nextStatus}`,
+          message: `${school.name} status has been changed to ${nextStatus}.`,
+          type: nextStatus === 'Active' ? 'success' : 'warning',
+          role: 'super-admin'
+        });
+
+        // Also notify the principal
+        addNotification({
+          title: `Account ${nextStatus}`,
+          message: `Your school account has been ${nextStatus.toLowerCase()} by the system administrator.`,
+          type: nextStatus === 'Active' ? 'success' : 'error',
+          role: 'principal',
+          userId: school.id // Using school.id as userId for principal for now
+        });
+
         return { ...school, status: nextStatus as any };
       }
       return school;
@@ -297,7 +322,18 @@ export const SuperAdminDashboard = () => {
   };
 
   const handleMaterialAction = (id: string, action: 'Approved' | 'Rejected') => {
-    setExamMaterials(examMaterials.map(m => m.id === id ? { ...m, status: action } : m));
+    setExamMaterials(examMaterials.map(m => {
+      if (m.id === id) {
+        addNotification({
+          title: `Material ${action}`,
+          message: `The material "${m.title}" has been ${action.toLowerCase()}.`,
+          type: action === 'Approved' ? 'success' : 'error',
+          role: 'super-admin'
+        });
+        return { ...m, status: action };
+      }
+      return m;
+    }));
   };
 
   const toggleMaterialVisibility = (id: string) => {
@@ -439,10 +475,7 @@ export const SuperAdminDashboard = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <button className="p-2 text-gray-400 hover:text-kenya-red relative">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-2 right-2 w-2 h-2 bg-kenya-red rounded-full border-2 border-white" />
-            </button>
+            <NotificationBell role="super-admin" />
             <div className="h-8 w-px bg-gray-200 mx-2" />
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">

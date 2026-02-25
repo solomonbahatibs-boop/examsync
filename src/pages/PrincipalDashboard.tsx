@@ -36,8 +36,10 @@ import {
   Globe,
   Building2,
   Image as ImageIcon,
-  Quote
+  Quote,
+  Trophy
 } from 'lucide-react';
+import { NotificationBell, addNotification } from '../components/NotificationBell';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Letterhead } from '../components/Letterhead';
@@ -63,7 +65,91 @@ export const PrincipalDashboard = () => {
   const [isSuspended, setIsSuspended] = useState(false);
   const [daysToExpiry, setDaysToExpiry] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'staff' | 'students' | 'academic' | 'settings' | 'classes'>('dashboard');
-  const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports'>('overview');
+  const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports' | 'results-processing'>('overview');
+  const [topXCount, setTopXCount] = useState(10);
+  const [selectedProcessingClass, setSelectedProcessingClass] = useState('All');
+  const [selectedAnalysisClass, setSelectedAnalysisClass] = useState('All');
+  const [selectedProcessingExamId, setSelectedProcessingExamId] = useState('');
+  
+  const handleBulkMarksUpload = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+
+      // Assuming format: [Admission No, Subject1, Subject2, ...]
+      // Header row: Admission Number, Math, English, Science, ...
+      const header = data[0];
+      const subjectIndices: { [key: string]: number } = {};
+      
+      header.forEach((cell, idx) => {
+        const la = String(cell).trim();
+        if (learningAreas.includes(la)) {
+          subjectIndices[la] = idx;
+        }
+      });
+
+      const newMarks = [...marks];
+      const examId = selectedProcessingExamId;
+      
+      if (!examId) {
+        alert('Please select an examination first.');
+        return;
+      }
+
+      data.slice(1).forEach((row) => {
+        const admNo = String(row[0]).trim();
+        const student = students.find(s => s.adm === admNo);
+        
+        if (student) {
+          Object.entries(subjectIndices).forEach(([subject, idx]) => {
+            const score = row[idx];
+            if (score !== undefined && score !== '') {
+              // Remove existing mark for this student/exam/subject
+              const markIdx = newMarks.findIndex(m => m.studentId === student.id && m.examId === examId && m.subject === subject);
+              const markData = {
+                id: Math.random().toString(36).substr(2, 9),
+                examId,
+                studentId: student.id,
+                score: String(score),
+                subject,
+                updatedAt: new Date().toISOString()
+              };
+              
+              if (markIdx > -1) {
+                newMarks[markIdx] = markData;
+              } else {
+                newMarks.push(markData);
+              }
+            }
+          });
+        }
+      });
+
+      setMarks(newMarks);
+      alert('Bulk marks imported successfully!');
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const downloadBulkMarksTemplate = () => {
+    const header = ['Admission Number', ...learningAreas];
+    const data = [
+      header,
+      ['ADM-2024-001', ...learningAreas.map(() => '80')],
+      ['ADM-2024-002', ...learningAreas.map(() => '75')]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Marks");
+    XLSX.writeFile(wb, "Bulk_Marks_Upload_Template.xlsx");
+  };
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [showAddClassModal, setShowAddClassModal] = useState(false);
@@ -237,6 +323,22 @@ export const PrincipalDashboard = () => {
           const diffTime = expiryDate.getTime() - now.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           setDaysToExpiry(diffDays);
+
+          // Trigger notification for expiry warning
+          if (diffDays <= 15 && diffDays > 0) {
+            const lastWarning = localStorage.getItem(`alakara_expiry_warning_${updatedSchool.id}`);
+            const today = new Date().toDateString();
+            if (lastWarning !== today) {
+              addNotification({
+                title: 'Subscription Expiry Warning',
+                message: `Your school subscription will expire in ${diffDays} days. Please renew to avoid service interruption.`,
+                type: 'warning',
+                role: 'principal',
+                userId: updatedSchool.id
+              });
+              localStorage.setItem(`alakara_expiry_warning_${updatedSchool.id}`, today);
+            }
+          }
         } else {
           setDaysToExpiry(null);
         }
@@ -487,7 +589,26 @@ export const PrincipalDashboard = () => {
 
   const processExam = (id: string) => {
     if (window.confirm('Are you sure you want to process this exam? This will lock mark entry for teachers.')) {
+      const exam = exams.find(e => e.id === id);
       setExams(exams.map(e => e.id === id ? { ...e, status: 'Completed' } : e));
+      
+      addNotification({
+        title: 'Exam Results Published',
+        message: `Results for "${exam?.title}" have been processed and published.`,
+        type: 'success',
+        role: 'principal',
+        userId: school.id
+      });
+
+      // Notify students in the classes
+      exam?.classes.forEach((className: string) => {
+        addNotification({
+          title: 'New Results Available',
+          message: `The results for ${exam.title} are now available for viewing.`,
+          type: 'info',
+          role: 'student'
+        });
+      });
     }
   };
 
@@ -604,7 +725,7 @@ export const PrincipalDashboard = () => {
 
     // Group marks by student
     const studentAnalysis = students
-      .filter(s => exam.classes.includes(s.class))
+      .filter(s => exam.classes.includes(s.class) && (selectedAnalysisClass === 'All' || s.class === selectedAnalysisClass))
       .map(student => {
         const studentMarks = examMarks.filter(m => m.studentId === student.id);
         const subjectScores: any = {};
@@ -642,6 +763,60 @@ export const PrincipalDashboard = () => {
     // Rank students
     const ranked = studentAnalysis.sort((a, b) => b.totalScore - a.totalScore);
     return ranked.map((s, index) => ({ ...s, rank: index + 1 }));
+  };
+
+  const getSubjectChampions = () => {
+    if (!selectedProcessingExamId) return [];
+    
+    const examMarks = marks.filter(m => m.examId === selectedProcessingExamId);
+    
+    return learningAreas.map(subject => {
+      const subjectMarks = examMarks.filter(m => m.subject === subject);
+      const sorted = subjectMarks
+        .map(m => {
+          const student = students.find(s => s.id === m.studentId);
+          return { ...m, studentName: student?.name, studentAdm: student?.adm, studentClass: student?.class };
+        })
+        .filter(m => selectedProcessingClass === 'All' || m.studentClass === selectedProcessingClass)
+        .sort((a, b) => parseFloat(b.score) - parseFloat(a.score));
+        
+      return {
+        subject,
+        champion: sorted[0] || null
+      };
+    });
+  };
+
+  const getTopStudents = () => {
+    if (!selectedProcessingExamId) return [];
+    
+    const examMarks = marks.filter(m => m.examId === selectedProcessingExamId);
+    const exam = exams.find(e => e.id === selectedProcessingExamId);
+    if (!exam) return [];
+
+    const studentAnalysis = students
+      .filter(s => exam.classes.includes(s.class) && (selectedProcessingClass === 'All' || s.class === selectedProcessingClass))
+      .map(student => {
+        const studentMarks = examMarks.filter(m => m.studentId === student.id);
+        let totalScore = 0;
+        let subjectsCount = 0;
+
+        learningAreas.forEach(la => {
+          const mark = studentMarks.find(m => m.subject === la);
+          const score = mark ? parseFloat(mark.score) : null;
+          if (score !== null) {
+            totalScore += score;
+            subjectsCount++;
+          }
+        });
+
+        const average = subjectsCount > 0 ? totalScore / subjectsCount : 0;
+        return { ...student, totalScore, average };
+      })
+      .sort((a, b) => b.totalScore - a.totalScore)
+      .slice(0, topXCount);
+
+    return studentAnalysis;
   };
 
   const analysisData = getAnalysisData();
@@ -852,10 +1027,7 @@ export const PrincipalDashboard = () => {
           </div>
 
           <div className="flex items-center gap-4">
-            <button className="p-2 text-gray-400 hover:text-kenya-red relative">
-              <Bell className="w-5 h-5" />
-              {!isSuspended && <span className="absolute top-2 right-2 w-2 h-2 bg-kenya-red rounded-full border-2 border-white" />}
-            </button>
+            <NotificationBell role="principal" userId={school.id} />
             <div className="h-8 w-px bg-gray-200 mx-2" />
             <div className="flex items-center gap-3">
               <div className="text-right hidden sm:block">
@@ -1281,6 +1453,7 @@ export const PrincipalDashboard = () => {
                       { id: 'learning-area', title: 'Learning Areas', desc: 'Manage subjects and curriculum areas.', icon: Library, color: 'text-blue-600', bg: 'bg-blue-50' },
                       { id: 'grading', title: 'Grading System', desc: 'Define grade boundaries and scales.', icon: ClipboardList, color: 'text-orange-600', bg: 'bg-orange-50' },
                       { id: 'analysis', title: 'Analyse Results', desc: 'Deep dive into student performance data.', icon: BarChart3, color: 'text-kenya-red', bg: 'bg-kenya-red/10' },
+                      { id: 'results-processing', title: 'Results Processing', desc: 'Subject champions and top performers.', icon: Trophy, color: 'text-yellow-600', bg: 'bg-yellow-50' },
                       { id: 'reports', title: 'Generate Report Cards', desc: 'Produce and distribute student reports.', icon: FileSpreadsheet, color: 'text-purple-600', bg: 'bg-purple-50' },
                     ].map((item) => (
                       <button
@@ -1484,6 +1657,16 @@ export const PrincipalDashboard = () => {
                           <p className="text-sm text-gray-500">Select an examination to view detailed performance analysis.</p>
                         </div>
                         <div className="flex flex-wrap items-center gap-4">
+                          <select 
+                            value={selectedAnalysisClass}
+                            onChange={(e) => setSelectedAnalysisClass(e.target.value)}
+                            className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                          >
+                            <option value="All">All Classes</option>
+                            {classes.map(c => (
+                              <option key={c.id} value={c.name}>{c.name}</option>
+                            ))}
+                          </select>
                           <select 
                             value={selectedAnalysisExamId}
                             onChange={(e) => setSelectedAnalysisExamId(e.target.value)}
@@ -1726,6 +1909,145 @@ export const PrincipalDashboard = () => {
                           </tbody>
                         </table>
                       </div>
+                    </div>
+                  </div>
+                ) : academicSubTab === 'results-processing' ? (
+                  <div className="space-y-8">
+                    <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                        <div>
+                          <h3 className="text-xl font-bold text-kenya-black">Results Processing</h3>
+                          <p className="text-sm text-gray-500">Manage bulk uploads and identify top performers.</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-4">
+                          <select 
+                            value={selectedProcessingClass}
+                            onChange={(e) => setSelectedProcessingClass(e.target.value)}
+                            className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                          >
+                            <option value="All">All Classes</option>
+                            {classes.map(c => (
+                              <option key={c.id} value={c.name}>{c.name}</option>
+                            ))}
+                          </select>
+                          <select 
+                            value={selectedProcessingExamId}
+                            onChange={(e) => setSelectedProcessingExamId(e.target.value)}
+                            className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                          >
+                            <option value="">Select Examination...</option>
+                            {exams.map(e => (
+                              <option key={e.id} value={e.id}>{e.title}</option>
+                            ))}
+                          </select>
+                          
+                          <div className="flex items-center gap-2">
+                            <Button onClick={downloadBulkMarksTemplate} variant="ghost" size="sm" className="gap-2">
+                              <Download className="w-4 h-4" />
+                              Template
+                            </Button>
+                            <label className="cursor-pointer">
+                              <input type="file" className="hidden" accept=".xlsx,.xls" onChange={handleBulkMarksUpload} />
+                              <div className="bg-kenya-green text-white px-4 py-2 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-kenya-green/90 transition-colors">
+                                <Upload className="w-4 h-4" />
+                                Bulk Upload
+                              </div>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+
+                      {!selectedProcessingExamId ? (
+                        <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
+                          <Trophy className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                          <p className="text-gray-400 font-medium italic">Select an examination to begin processing results.</p>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                          {/* Subject Champions */}
+                          <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-black text-kenya-black uppercase tracking-widest text-sm">Subject Champions</h4>
+                              <span className="text-[10px] font-bold text-gray-400 uppercase">Top Performer per subject</span>
+                            </div>
+                            <div className="grid grid-cols-1 gap-4">
+                              {getSubjectChampions().map((item, idx) => (
+                                <div key={idx} className="bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center justify-between group hover:border-kenya-green/30 transition-all">
+                                  <div className="flex items-center gap-4">
+                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm font-black text-kenya-green">
+                                      {item.subject.substring(0, 2).toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{item.subject}</p>
+                                      <p className="font-bold text-kenya-black">{item.champion ? item.champion.studentName : 'No data'}</p>
+                                    </div>
+                                  </div>
+                                  {item.champion && (
+                                    <div className="text-right">
+                                      <p className="text-lg font-black text-kenya-green">{item.champion.score}%</p>
+                                      <p className="text-[10px] font-bold text-gray-400 uppercase">{item.champion.studentClass}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Top Overall Performers */}
+                          <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-black text-kenya-black uppercase tracking-widest text-sm">Overall Merit List</h4>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase">Show Top</span>
+                                <select 
+                                  value={topXCount}
+                                  onChange={(e) => setTopXCount(parseInt(e.target.value))}
+                                  className="text-[10px] font-black bg-white border border-gray-200 rounded px-1 py-0.5 focus:outline-none"
+                                >
+                                  <option value={3}>3</option>
+                                  <option value={5}>5</option>
+                                  <option value={10}>10</option>
+                                  <option value={20}>20</option>
+                                  <option value={50}>50</option>
+                                </select>
+                              </div>
+                            </div>
+                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                              <table className="w-full text-left">
+                                <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                                  <tr>
+                                    <th className="px-4 py-3">Rank</th>
+                                    <th className="px-4 py-3">Student</th>
+                                    <th className="px-4 py-3 text-center">Avg</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {getTopStudents().map((student, idx) => (
+                                    <tr key={student.id} className="hover:bg-gray-50/50 transition-colors">
+                                      <td className="px-4 py-3">
+                                        <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-black ${
+                                          idx === 0 ? 'bg-yellow-100 text-yellow-700' : 
+                                          idx === 1 ? 'bg-gray-100 text-gray-600' :
+                                          idx === 2 ? 'bg-orange-100 text-orange-700' : 'text-gray-400'
+                                        }`}>
+                                          {idx + 1}
+                                        </span>
+                                      </td>
+                                      <td className="px-4 py-3">
+                                        <p className="text-sm font-bold text-kenya-black">{student.name}</p>
+                                        <p className="text-[10px] text-gray-500">{student.adm} • {student.class}</p>
+                                      </td>
+                                      <td className="px-4 py-3 text-center">
+                                        <span className="text-sm font-black text-kenya-green">{student.average.toFixed(1)}%</span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ) : academicSubTab === 'reports' ? (

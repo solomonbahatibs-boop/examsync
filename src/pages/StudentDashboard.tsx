@@ -12,6 +12,7 @@ import {
   Clock,
   ShieldCheck
 } from 'lucide-react';
+import { NotificationBell } from '../components/NotificationBell';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 
@@ -140,6 +141,7 @@ export const StudentDashboard = () => {
           </div>
 
           <div className="flex items-center gap-6 ml-10">
+            <NotificationBell role="student" userId={currentStudent.id} />
             <div className="text-right">
               <p className="text-sm font-black text-black uppercase tracking-widest">Student Portal</p>
               <p className="text-xs font-bold text-gray-500 uppercase">ADM-2024-001</p>

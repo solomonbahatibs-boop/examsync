@@ -22,14 +22,22 @@ export const StudentLogin = () => {
       const students = JSON.parse(localStorage.getItem('alakara_students') || '[]');
       const student = students.find((s: any) => s.adm === username);
 
-      if ((username === 'student' && password === 'student123') || (student && password === 'password123')) {
+      const isDefaultLogin = username === 'student' && password === 'student123';
+      
+      let isValidPassword = false;
+      if (student) {
+        const names = student.name.split(' ').map((n: string) => n.toLowerCase());
+        isValidPassword = names.includes(password.toLowerCase()) || password === 'password123';
+      }
+
+      if (isDefaultLogin || isValidPassword) {
         setIsLoading(false);
         // Store the logged in student for the dashboard
         const loggedInStudent = student || { id: 'S1', name: 'Alice Wanjiku', adm: 'ADM-2024-001', class: 'Form 1' };
         localStorage.setItem('alakara_current_student', JSON.stringify(loggedInStudent));
         navigate('/student/dashboard');
       } else {
-        setError('Check your Admission Number or Password!');
+        setError('Check your Admission Number or Password (use one of your names)!');
         setIsLoading(false);
       }
     }, 1000);

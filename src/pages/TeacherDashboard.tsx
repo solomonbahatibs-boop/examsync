@@ -26,6 +26,7 @@ import {
   Trash2,
   X
 } from 'lucide-react';
+import { NotificationBell, addNotification } from '../components/NotificationBell';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { 
@@ -100,6 +101,7 @@ export const TeacherDashboard = () => {
   const [teacherRole] = useState<'Teacher' | 'Class Teacher'>(currentTeacher.role === 'Class Teacher' ? 'Class Teacher' : 'Teacher');
   const [managedClass] = useState<string>(assignedClasses[0] || 'Form 1');
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState('');
+  const [selectedAnalysisClass, setSelectedAnalysisClass] = useState('All');
   const [analysisOptions, setAnalysisOptions] = useState({
     showGrades: true,
     showRank: true
@@ -217,6 +219,14 @@ export const TeacherDashboard = () => {
     });
     setMarks(newMarks);
     alert('Marks saved successfully!');
+    
+    addNotification({
+      title: 'Marks Saved',
+      message: `You have successfully saved marks for "${activeExam.title}".`,
+      type: 'success',
+      role: 'teacher',
+      userId: currentTeacher.id
+    });
   };
 
   const handleBulkUpload = (e: ChangeEvent<HTMLInputElement>) => {
@@ -231,22 +241,70 @@ export const TeacherDashboard = () => {
       const ws = wb.Sheets[wsname];
       const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
 
-      // Assuming format: [Admission No, Score]
-      // Skip header row if it exists
-      const newMarksMap = { ...currentMarks };
-      data.forEach((row, index) => {
-        if (index === 0 && isNaN(Number(row[1]))) return; // Skip header
-        const admNo = String(row[0]).trim();
-        const score = row[1];
-
-        const student = allStudents.find(s => s.adm === admNo);
-        if (student) {
-          newMarksMap[student.id] = String(score);
+      const header = data[0];
+      const subjectIndices: { [key: string]: number } = {};
+      
+      header.forEach((cell, idx) => {
+        const la = String(cell).trim();
+        if (learningAreas.includes(la)) {
+          subjectIndices[la] = idx;
         }
       });
 
-      setCurrentMarks(newMarksMap);
-      alert('Bulk marks loaded! Review and save to finalize.');
+      if (Object.keys(subjectIndices).length === 0) {
+        // Fallback to old format [Adm, Score]
+        const newMarksMap = { ...currentMarks };
+        data.forEach((row, index) => {
+          if (index === 0 && isNaN(Number(row[1]))) return;
+          const admNo = String(row[0]).trim();
+          const score = row[1];
+          const student = allStudents.find(s => s.adm === admNo);
+          if (student) {
+            newMarksMap[student.id] = String(score);
+          }
+        });
+        setCurrentMarks(newMarksMap);
+      } else {
+        // Multi-subject upload
+        const newMarks = [...marks];
+        data.slice(1).forEach((row) => {
+          const admNo = String(row[0]).trim();
+          const student = allStudents.find(s => s.adm === admNo);
+          if (student) {
+            Object.entries(subjectIndices).forEach(([subject, idx]) => {
+              const score = row[idx];
+              if (score !== undefined && score !== '') {
+                const markIdx = newMarks.findIndex(m => m.studentId === student.id && m.examId === activeExam.id && m.subject === subject);
+                const markData = {
+                  id: Math.random().toString(36).substr(2, 9),
+                  examId: activeExam.id,
+                  studentId: student.id,
+                  score: String(score),
+                  subject,
+                  updatedAt: new Date().toISOString()
+                };
+                if (markIdx > -1) newMarks[markIdx] = markData;
+                else newMarks.push(markData);
+              }
+            });
+          }
+        });
+        setMarks(newMarks);
+        
+        // Update currentMarks for the primary subject if it was in the file
+        const primarySubject = 'Mathematics'; 
+        const primaryIdx = subjectIndices[primarySubject];
+        if (primaryIdx !== undefined) {
+          const newMarksMap = { ...currentMarks };
+          data.slice(1).forEach(row => {
+            const admNo = String(row[0]).trim();
+            const student = allStudents.find(s => s.adm === admNo);
+            if (student) newMarksMap[student.id] = String(row[primaryIdx]);
+          });
+          setCurrentMarks(newMarksMap);
+        }
+      }
+      alert('Bulk marks imported successfully!');
     };
     reader.readAsBinaryString(file);
   };
@@ -274,7 +332,7 @@ export const TeacherDashboard = () => {
 
     // Group marks by student - Filtered by assigned classes
     const studentAnalysis = allStudents
-      .filter(s => exam.classes.includes(s.class) && assignedClasses.includes(s.class))
+      .filter(s => exam.classes.includes(s.class) && assignedClasses.includes(s.class) && (selectedAnalysisClass === 'All' || s.class === selectedAnalysisClass))
       .map(student => {
         const studentMarks = examMarks.filter(m => m.studentId === student.id);
         const subjectScores: any = {};
@@ -413,6 +471,7 @@ export const TeacherDashboard = () => {
           </div>
 
           <div className="flex items-center gap-4">
+            <NotificationBell role="teacher" userId={currentTeacher.id} />
             <div className="text-right">
               <p className="text-sm font-bold text-kenya-black">Mr. Kamau</p>
               <p className="text-xs text-gray-500">Mathematics Dept.</p>
@@ -609,6 +668,16 @@ export const TeacherDashboard = () => {
                     <p className="text-sm text-gray-500">View detailed results and subject rankings.</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-4">
+                    <select 
+                      value={selectedAnalysisClass}
+                      onChange={(e) => setSelectedAnalysisClass(e.target.value)}
+                      className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                    >
+                      <option value="All">All My Classes</option>
+                      {assignedClasses.map(c => (
+                        <option key={c} value={c}>{c}</option>
+                      ))}
+                    </select>
                     <select 
                       value={selectedAnalysisExamId}
                       onChange={(e) => setSelectedAnalysisExamId(e.target.value)}
