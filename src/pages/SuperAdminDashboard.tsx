@@ -55,6 +55,7 @@ interface School {
   principalPass: string;
   teacherEmail: string;
   teacherPass: string;
+  subscriptionExpiresAt?: string;
 }
 
 interface ExamMaterial {
@@ -157,6 +158,11 @@ export const SuperAdminDashboard = () => {
   const [schools, setSchools] = useState<School[]>(() => {
     const saved = localStorage.getItem('alakara_schools');
     if (saved) return JSON.parse(saved);
+    // Set default expiry dates for demo: 30 days from now
+    const defaultExpiry = new Date();
+    defaultExpiry.setDate(defaultExpiry.getDate() + 30);
+    const expiryStr = defaultExpiry.toISOString().split('T')[0];
+
     return [
       { 
         id: '1', 
@@ -168,7 +174,8 @@ export const SuperAdminDashboard = () => {
         principalEmail: 'principal.oakwood@alakara.ac.ke',
         principalPass: 'P@ss123',
         teacherEmail: 'staff.oakwood@alakara.ac.ke',
-        teacherPass: 'T@ech456'
+        teacherPass: 'T@ech456',
+        subscriptionExpiresAt: expiryStr
       },
       { 
         id: '2', 
@@ -180,7 +187,8 @@ export const SuperAdminDashboard = () => {
         principalEmail: 'principal.cityhigh@alakara.ac.ke',
         principalPass: 'P@ss123',
         teacherEmail: 'staff.cityhigh@alakara.ac.ke',
-        teacherPass: 'T@ech456'
+        teacherPass: 'T@ech456',
+        subscriptionExpiresAt: expiryStr
       },
       { 
         id: '3', 
@@ -192,7 +200,8 @@ export const SuperAdminDashboard = () => {
         principalEmail: 'principal.global@alakara.ac.ke',
         principalPass: 'P@ss123',
         teacherEmail: 'staff.global@alakara.ac.ke',
-        teacherPass: 'T@ech456'
+        teacherPass: 'T@ech456',
+        subscriptionExpiresAt: expiryStr
       },
     ];
   });
@@ -227,6 +236,10 @@ export const SuperAdminDashboard = () => {
     e.preventDefault();
     const creds = generateCredentials(newSchool.name);
     
+    const defaultExpiry = new Date();
+    defaultExpiry.setDate(defaultExpiry.getDate() + 30);
+    const expiryStr = defaultExpiry.toISOString().split('T')[0];
+
     const school: School = {
       id: Math.random().toString(36).substr(2, 9),
       ...newSchool,
@@ -235,7 +248,8 @@ export const SuperAdminDashboard = () => {
       principalEmail: creds.principal,
       principalPass: creds.pass,
       teacherEmail: creds.teacher,
-      teacherPass: creds.pass
+      teacherPass: creds.pass,
+      subscriptionExpiresAt: expiryStr
     };
 
     setSchools([school, ...schools]);
@@ -299,6 +313,15 @@ export const SuperAdminDashboard = () => {
     if (window.confirm('Are you sure you want to delete this material?')) {
       setExamMaterials(examMaterials.filter(m => m.id !== id));
     }
+  };
+
+  const updateSchoolExpiry = (id: string, date: string) => {
+    setSchools(schools.map(school => {
+      if (school.id === id) {
+        return { ...school, subscriptionExpiresAt: date };
+      }
+      return school;
+    }));
   };
 
   const filteredSchools = schools.filter(school => {
@@ -478,8 +501,8 @@ export const SuperAdminDashboard = () => {
               </div>
 
               {/* Charts Preview */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
+                <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                   <h3 className="font-bold text-kenya-black mb-6">Registration Growth</h3>
                   <div className="h-64 w-full">
                     <ResponsiveContainer width="100%" height="100%">
@@ -501,6 +524,45 @@ export const SuperAdminDashboard = () => {
                     </ResponsiveContainer>
                   </div>
                 </div>
+
+                {/* System Status */}
+                <div className="bg-kenya-black rounded-3xl p-8 text-white shadow-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="bg-kenya-green p-2 rounded-xl">
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      <h4 className="font-bold">System Status</h4>
+                    </div>
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-400">Network Status</span>
+                        <span className="font-bold text-kenya-green flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-kenya-green animate-pulse"></span>
+                          Online
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-400">Active Sessions</span>
+                        <span className="font-bold">1,248</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-400">Storage Used</span>
+                        <span className="font-bold">12.4 TB / 50 TB</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-gray-400">Last Backup</span>
+                        <span className="font-bold">Today, 02:15 AM</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button className="w-full mt-8 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-bold transition-all">
+                    Download System Logs
+                  </button>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
                 <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
                   <h3 className="font-bold text-kenya-black mb-6">Performance by Subject</h3>
                   <div className="h-64 w-full">
@@ -606,14 +668,6 @@ export const SuperAdminDashboard = () => {
                       </div>
                     </div>
                   </div>
-
-                  <div className="bg-gradient-to-br from-kenya-black via-kenya-red to-kenya-green p-6 rounded-2xl text-white shadow-lg shadow-kenya-black/20">
-                    <h3 className="font-bold mb-2">Need Support?</h3>
-                    <p className="text-gray-100 text-sm mb-6 leading-relaxed">
-                      Our technical team is available 24/7 for system-wide emergencies in Kenya.
-                    </p>
-                    <Button variant="secondary" size="sm" className="w-full">Open Support Ticket</Button>
-                  </div>
                 </div>
               </div>
             </>
@@ -670,6 +724,7 @@ export const SuperAdminDashboard = () => {
                         <th className="px-6 py-4">Principal Account</th>
                         <th className="px-6 py-4">Staff Account</th>
                         <th className="px-6 py-4">Students</th>
+                        <th className="px-6 py-4">Active Until</th>
                         <th className="px-6 py-4">Status</th>
                         <th className="px-6 py-4">Actions</th>
                       </tr>
@@ -706,6 +761,14 @@ export const SuperAdminDashboard = () => {
                             </div>
                           </td>
                           <td className="px-6 py-4 text-sm text-kenya-black font-medium">{school.students}</td>
+                          <td className="px-6 py-4">
+                            <input 
+                              type="date" 
+                              value={school.subscriptionExpiresAt || ''}
+                              onChange={(e) => updateSchoolExpiry(school.id, e.target.value)}
+                              className="bg-gray-50 border border-gray-200 rounded-lg text-xs px-2 py-1 focus:outline-none focus:ring-1 focus:ring-kenya-green transition-all"
+                            />
+                          </td>
                           <td className="px-6 py-4">
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
                               school.status === 'Active' ? 'bg-kenya-green/10 text-kenya-green' : 
