@@ -40,9 +40,12 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { Letterhead } from '../components/Letterhead';
 import { 
   BarChart, 
   Bar, 
+  AreaChart,
+  Area,
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -59,10 +62,11 @@ export const PrincipalDashboard = () => {
   const [school, setSchool] = useState<any>(null);
   const [isSuspended, setIsSuspended] = useState(false);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'staff' | 'students' | 'academic' | 'settings' | 'classes'>('dashboard');
-  const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports' | 'edit-marks'>('overview');
+  const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports'>('overview');
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [showAddClassModal, setShowAddClassModal] = useState(false);
+  const [showReportPreview, setShowReportPreview] = useState(false);
   const [students, setStudents] = useState<any[]>(() => {
     const saved = localStorage.getItem('alakara_students');
     if (saved) return JSON.parse(saved);
@@ -105,12 +109,6 @@ export const PrincipalDashboard = () => {
   const [showEditMarksModal, setShowEditMarksModal] = useState(false);
   const [selectedMarksStudent, setSelectedMarksStudent] = useState<any>(null);
   const [editingMarks, setEditingMarks] = useState<any>({}); // {examId: score}
-  const [editMarksConfig, setEditMarksConfig] = useState({
-    examId: '',
-    className: '',
-    subject: ''
-  });
-  const [classMarks, setClassMarks] = useState<any>({}); // {studentId: score}
 
   useEffect(() => {
     localStorage.setItem('alakara_marks', JSON.stringify(marks));
@@ -166,7 +164,8 @@ export const PrincipalDashboard = () => {
     includeAverages: true,
     includeGrades: true,
     graphType: 'bar' as 'bar' | 'line',
-    includeLetterhead: true
+    includeLetterhead: true,
+    includePerformanceTrend: true
   });
 
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState('');
@@ -201,14 +200,16 @@ export const PrincipalDashboard = () => {
     const saved = localStorage.getItem('alakara_staff');
     if (saved) return JSON.parse(saved);
     return [
-      { id: '1', name: 'John Kamau', email: 'j.kamau@school.ac.ke', role: 'Head of Science', status: 'Active' },
-      { id: '2', name: 'Sarah Anyango', email: 's.anyango@school.ac.ke', role: 'Mathematics Teacher', status: 'Active' },
-      { id: '3', name: 'David Omondi', email: 'd.omondi@school.ac.ke', role: 'History Teacher', status: 'Active' },
+      { id: '1', name: 'John Kamau', email: 'j.kamau@alakara.ac.ke', role: 'Head of Science', status: 'Active', username: 'j.kamau@alakara.ac.ke', password: 'password123', mustChangePassword: true, assignedSubjects: ['Science', 'Biology'], assignedClasses: ['Form 1', 'Form 2', 'Grade 7'] },
+      { id: '2', name: 'Sarah Anyango', email: 's.anyango@alakara.ac.ke', role: 'Mathematics Teacher', status: 'Active', username: 's.anyango@alakara.ac.ke', password: 'password123', mustChangePassword: true, assignedSubjects: ['Mathematics'], assignedClasses: ['Form 1', 'Form 2', 'Grade 7'] },
+      { id: '3', name: 'David Omondi', email: 'd.omondi@alakara.ac.ke', role: 'History Teacher', status: 'Active', username: 'd.omondi@alakara.ac.ke', password: 'password123', mustChangePassword: true, assignedSubjects: ['Social Studies', 'CRE'], assignedClasses: ['Form 1', 'Form 2', 'Grade 7'] },
+      { id: '4', name: 'Mary Wambui', email: 'm.wambui@alakara.ac.ke', role: 'English Teacher', status: 'Active', username: 'm.wambui@alakara.ac.ke', password: 'password123', mustChangePassword: true, assignedSubjects: ['English', 'Kiswahili'], assignedClasses: ['Form 1', 'Form 2', 'Grade 7'] },
     ];
   });
 
   const [newStaff, setNewStaff] = useState({ name: '', email: '', role: 'Teacher', assignedSubjects: [] as string[], assignedClasses: [] as string[] });
   const [editingStaff, setEditingStaff] = useState<any>(null);
+  const [generatedStaffCreds, setGeneratedStaffCreds] = useState<{name: string, username: string, password: string} | null>(null);
 
   useEffect(() => {
     localStorage.setItem('alakara_staff', JSON.stringify(staff));
@@ -253,9 +254,15 @@ export const PrincipalDashboard = () => {
   const handleAddStaff = (e: FormEvent) => {
     e.preventDefault();
     
-    // Ensure email ends with @alakara.ac.ke
+    // Auto-generate email/username from name if not provided
     let finalEmail = newStaff.email.trim();
-    if (!finalEmail.includes('@')) {
+    if (!finalEmail) {
+      const nameParts = newStaff.name.toLowerCase().split(' ');
+      const baseUsername = nameParts.length > 1 
+        ? `${nameParts[0][0]}${nameParts[1]}` 
+        : nameParts[0];
+      finalEmail = `${baseUsername}@alakara.ac.ke`;
+    } else if (!finalEmail.includes('@')) {
       finalEmail = `${finalEmail.toLowerCase()}@alakara.ac.ke`;
     } else if (!finalEmail.endsWith('@alakara.ac.ke')) {
       const [prefix] = finalEmail.split('@');
@@ -273,13 +280,19 @@ export const PrincipalDashboard = () => {
       } : s));
       setEditingStaff(null);
     } else {
+      const password = Math.random().toString(36).slice(-8);
+
       const staffMember = {
         id: Math.random().toString(36).substr(2, 9),
         ...newStaff,
         email: finalEmail,
-        status: 'Active'
+        status: 'Active',
+        username: finalEmail,
+        password,
+        mustChangePassword: true
       };
       setStaff([...staff, staffMember]);
+      setGeneratedStaffCreds({ name: newStaff.name, username: finalEmail, password });
     }
     setNewStaff({ name: '', email: '', role: 'Teacher', assignedSubjects: [], assignedClasses: [] });
     setShowAddStaffModal(false);
@@ -462,12 +475,6 @@ export const PrincipalDashboard = () => {
     }
   };
 
-  const recallExam = (id: string) => {
-    if (window.confirm('Are you sure you want to recall this exam? Teachers will be able to edit marks again.')) {
-      setExams(exams.map(e => e.id === id ? { ...e, status: 'Active' } : e));
-    }
-  };
-
   const deleteExam = (id: string) => {
     if (window.confirm('Delete this exam? All associated marks will be lost.')) {
       setExams(exams.filter(e => e.id !== id));
@@ -521,7 +528,7 @@ export const PrincipalDashboard = () => {
       alert('Please select at least one exam.');
       return;
     }
-    alert('Report card generated successfully! (Demo: In a real app, this would trigger a PDF download)');
+    setShowReportPreview(true);
   };
 
   const openEditMarks = (student: any) => {
@@ -533,50 +540,6 @@ export const PrincipalDashboard = () => {
     });
     setEditingMarks(marksMap);
     setShowEditMarksModal(true);
-  };
-
-  const loadClassMarks = () => {
-    if (!editMarksConfig.examId || !editMarksConfig.className || !editMarksConfig.subject) return;
-    
-    const relevantMarks = marks.filter(m => 
-      m.examId === editMarksConfig.examId && 
-      m.subject === editMarksConfig.subject
-    );
-    
-    const marksMap: any = {};
-    relevantMarks.forEach(m => {
-      marksMap[m.studentId] = m.score;
-    });
-    
-    setClassMarks(marksMap);
-  };
-
-  useEffect(() => {
-    loadClassMarks();
-  }, [editMarksConfig.examId, editMarksConfig.className, editMarksConfig.subject, marks]);
-
-  const saveClassMarks = () => {
-    if (!editMarksConfig.examId || !editMarksConfig.className || !editMarksConfig.subject) return;
-
-    const newMarks = marks.filter(m => 
-      !(m.examId === editMarksConfig.examId && m.subject === editMarksConfig.subject && students.find(s => s.id === m.studentId)?.class === editMarksConfig.className)
-    );
-
-    Object.entries(classMarks).forEach(([studentId, score]) => {
-      if (score !== '' && score !== null && score !== undefined) {
-        newMarks.push({
-          id: `${editMarksConfig.examId}-${studentId}-${editMarksConfig.subject}`,
-          examId: editMarksConfig.examId,
-          studentId,
-          score: score.toString(),
-          subject: editMarksConfig.subject,
-          updatedAt: new Date().toISOString()
-        });
-      }
-    });
-
-    setMarks(newMarks);
-    alert('Marks updated successfully!');
   };
 
   const saveStudentMarks = () => {
@@ -648,6 +611,97 @@ export const PrincipalDashboard = () => {
   };
 
   const analysisData = getAnalysisData();
+
+  const getAnalysisHighlights = () => {
+    if (!selectedAnalysisExamId || analysisData.length === 0) return null;
+
+    const bestStudent = analysisData[0];
+    
+    const currentExam = exams.find(e => e.id === selectedAnalysisExamId);
+    if (!currentExam) return { bestStudent };
+
+    const previousExams = exams
+      .filter(e => e.id !== selectedAnalysisExamId && e.classes.some(c => currentExam.classes.includes(c)))
+      .sort((a, b) => new Date(b.createdAt || '').getTime() - new Date(a.createdAt || '').getTime());
+    
+    const previousExam = previousExams[0];
+    
+    if (!previousExam) return { bestStudent };
+
+    const improvements = analysisData.map(student => {
+      const prevExamMarks = marks.filter(m => m.examId === previousExam.id && m.studentId === student.id);
+      const prevTotal = prevExamMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+      const prevAvg = prevExamMarks.length > 0 ? prevTotal / prevExamMarks.length : null;
+      
+      if (prevAvg === null) return { ...student, improvement: 0 };
+      return { ...student, improvement: student.average - prevAvg };
+    });
+
+    const mostImproved = [...improvements].sort((a, b) => b.improvement - a.improvement)[0];
+    const mostDropped = [...improvements].sort((a, b) => a.improvement - b.improvement)[0];
+
+    return {
+      bestStudent,
+      mostImproved: mostImproved && mostImproved.improvement > 0 ? mostImproved : null,
+      mostDropped: mostDropped && mostDropped.improvement < 0 ? mostDropped : null,
+      previousExamTitle: previousExam.title
+    };
+  };
+
+  const exportAnalysis = () => {
+    if (!selectedAnalysisExamId || analysisData.length === 0) return;
+    
+    const exam = exams.find(e => e.id === selectedAnalysisExamId);
+    const highlights = getAnalysisHighlights();
+    
+    const mainSheetData = analysisData.map(row => {
+      const exportRow: any = {
+        'Rank': row.rank,
+        'Adm No': row.adm,
+        'Student Name': row.name,
+        'Class': row.class
+      };
+      
+      learningAreas.forEach(la => {
+        exportRow[la] = row.subjectScores[la] ?? '--';
+      });
+      
+      exportRow['Total'] = row.totalScore;
+      exportRow['Average (%)'] = row.average.toFixed(1);
+      exportRow['Grade'] = row.grade;
+      
+      return exportRow;
+    });
+
+    const highlightsData = [
+      { Category: 'Best Student', Name: highlights?.bestStudent?.name, Detail: `${highlights?.bestStudent?.average.toFixed(1)}% (Rank 1)` },
+    ];
+
+    if (highlights?.mostImproved) {
+      highlightsData.push({ 
+        Category: 'Most Improved', 
+        Name: highlights.mostImproved.name, 
+        Detail: `+${highlights.mostImproved.improvement.toFixed(1)}% from ${highlights.previousExamTitle}` 
+      });
+    }
+
+    if (highlights?.mostDropped) {
+      highlightsData.push({ 
+        Category: 'Most Dropped', 
+        Name: highlights.mostDropped.name, 
+        Detail: `${highlights.mostDropped.improvement.toFixed(1)}% from ${highlights.previousExamTitle}` 
+      });
+    }
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(mainSheetData);
+    const wsHighlights = XLSX.utils.json_to_sheet(highlightsData);
+    
+    XLSX.utils.book_append_sheet(wb, ws, "Full Analysis");
+    XLSX.utils.book_append_sheet(wb, wsHighlights, "Highlights");
+    
+    XLSX.writeFile(wb, `${exam?.title}_Analysis.xlsx`);
+  };
 
   const handleUpdateSchool = (e: FormEvent) => {
     e.preventDefault();
@@ -825,8 +879,31 @@ export const PrincipalDashboard = () => {
 
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
                   <h3 className="text-xl font-bold text-kenya-black mb-6">School Performance Overview</h3>
-                  <div className="h-64 bg-gray-50 rounded-2xl flex items-center justify-center border-2 border-dashed border-gray-200">
-                    <p className="text-gray-400 font-medium">Performance analytics will appear here</p>
+                  <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={[
+                        { month: 'Jan', score: 65 },
+                        { month: 'Feb', score: 68 },
+                        { month: 'Mar', score: 75 },
+                        { month: 'Apr', score: 72 },
+                        { month: 'May', score: 80 },
+                        { month: 'Jun', score: 85 },
+                      ]}>
+                        <defs>
+                          <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#006633" stopOpacity={0.1}/>
+                            <stop offset="95%" stopColor="#006633" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
+                        <YAxis axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
+                        <Tooltip 
+                          contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                        />
+                        <Area type="monotone" dataKey="score" stroke="#006633" strokeWidth={3} fillOpacity={1} fill="url(#colorScore)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
               </>
@@ -1020,6 +1097,14 @@ export const PrincipalDashboard = () => {
                                 <td className="px-6 py-4 text-right">
                                   <div className="flex items-center justify-end gap-2">
                                     <button 
+                                      onClick={() => openEditMarks(student)}
+                                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-kenya-green hover:text-white transition-all"
+                                      title="Manage Marks"
+                                    >
+                                      <ClipboardList className="w-3 h-3" />
+                                      Marks
+                                    </button>
+                                    <button 
                                       onClick={() => openEditStudent(student)}
                                       className="p-2 text-gray-400 hover:text-kenya-green transition-colors"
                                       title="Edit Student"
@@ -1136,7 +1221,6 @@ export const PrincipalDashboard = () => {
                       { id: 'create-exam', title: 'Create New Exam', desc: 'Schedule and set up new examinations.', icon: PlusCircle, color: 'text-kenya-green', bg: 'bg-kenya-green/10' },
                       { id: 'learning-area', title: 'Learning Areas', desc: 'Manage subjects and curriculum areas.', icon: Library, color: 'text-blue-600', bg: 'bg-blue-50' },
                       { id: 'grading', title: 'Grading System', desc: 'Define grade boundaries and scales.', icon: ClipboardList, color: 'text-orange-600', bg: 'bg-orange-50' },
-                      { id: 'edit-marks', title: 'Edit Marks', desc: 'Modify student marks by subject.', icon: Edit, color: 'text-yellow-600', bg: 'bg-yellow-50' },
                       { id: 'analysis', title: 'Analyse Results', desc: 'Deep dive into student performance data.', icon: BarChart3, color: 'text-kenya-red', bg: 'bg-kenya-red/10' },
                       { id: 'reports', title: 'Generate Report Cards', desc: 'Produce and distribute student reports.', icon: FileSpreadsheet, color: 'text-purple-600', bg: 'bg-purple-50' },
                     ].map((item) => (
@@ -1331,25 +1415,31 @@ export const PrincipalDashboard = () => {
                           </select>
                           
                           {selectedAnalysisExamId && (
-                            <div className="flex items-center gap-4 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100">
-                              <label className="flex items-center gap-2 cursor-pointer">
-                                <input 
-                                  type="checkbox"
-                                  checked={analysisOptions.showGrades}
-                                  onChange={(e) => setAnalysisOptions({...analysisOptions, showGrades: e.target.checked})}
-                                  className="w-4 h-4 rounded border-gray-300 text-kenya-green focus:ring-kenya-green"
-                                />
-                                <span className="text-xs font-bold text-gray-600">Show Grades</span>
-                              </label>
-                              <label className="flex items-center gap-2 cursor-pointer">
-                                <input 
-                                  type="checkbox"
-                                  checked={analysisOptions.showRank}
-                                  onChange={(e) => setAnalysisOptions({...analysisOptions, showRank: e.target.checked})}
-                                  className="w-4 h-4 rounded border-gray-300 text-kenya-green focus:ring-kenya-green"
-                                />
-                                <span className="text-xs font-bold text-gray-600">Show Rank</span>
-                              </label>
+                            <div className="flex items-center gap-4">
+                              <div className="flex items-center gap-4 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input 
+                                    type="checkbox"
+                                    checked={analysisOptions.showGrades}
+                                    onChange={(e) => setAnalysisOptions({...analysisOptions, showGrades: e.target.checked})}
+                                    className="w-4 h-4 rounded border-gray-300 text-kenya-green focus:ring-kenya-green"
+                                  />
+                                  <span className="text-xs font-bold text-gray-600">Show Grades</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                  <input 
+                                    type="checkbox"
+                                    checked={analysisOptions.showRank}
+                                    onChange={(e) => setAnalysisOptions({...analysisOptions, showRank: e.target.checked})}
+                                    className="w-4 h-4 rounded border-gray-300 text-kenya-green focus:ring-kenya-green"
+                                  />
+                                  <span className="text-xs font-bold text-gray-600">Show Rank</span>
+                                </label>
+                              </div>
+                              <Button onClick={exportAnalysis} className="gap-2 py-2 text-xs">
+                                <Download className="w-4 h-4" />
+                                Export Analysis
+                              </Button>
                             </div>
                           )}
                         </div>
@@ -1361,7 +1451,35 @@ export const PrincipalDashboard = () => {
                           <p className="text-gray-400 font-medium italic">Please select an examination to begin analysis.</p>
                         </div>
                       ) : (
-                        <div className="overflow-x-auto">
+                        <div className="space-y-8">
+                          {/* Highlights Section */}
+                          {getAnalysisHighlights() && (
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <div className="bg-kenya-green/5 border border-kenya-green/10 p-4 rounded-2xl">
+                                <p className="text-[10px] font-black text-kenya-green uppercase tracking-widest mb-1">Best Student</p>
+                                <p className="text-lg font-black text-kenya-black">{getAnalysisHighlights()?.bestStudent?.name}</p>
+                                <p className="text-xs font-bold text-gray-500">{getAnalysisHighlights()?.bestStudent?.average.toFixed(1)}% Mean Score</p>
+                              </div>
+                              
+                              {getAnalysisHighlights()?.mostImproved && (
+                                <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl">
+                                  <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Most Improved</p>
+                                  <p className="text-lg font-black text-kenya-black">{getAnalysisHighlights()?.mostImproved?.name}</p>
+                                  <p className="text-xs font-bold text-blue-500">+{getAnalysisHighlights()?.mostImproved?.improvement.toFixed(1)}% from {getAnalysisHighlights()?.previousExamTitle}</p>
+                                </div>
+                              )}
+
+                              {getAnalysisHighlights()?.mostDropped && (
+                                <div className="bg-kenya-red/5 border border-kenya-red/10 p-4 rounded-2xl">
+                                  <p className="text-[10px] font-black text-kenya-red uppercase tracking-widest mb-1">Most Dropped</p>
+                                  <p className="text-lg font-black text-kenya-black">{getAnalysisHighlights()?.mostDropped?.name}</p>
+                                  <p className="text-xs font-bold text-kenya-red">{getAnalysisHighlights()?.mostDropped?.improvement.toFixed(1)}% from {getAnalysisHighlights()?.previousExamTitle}</p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <div className="overflow-x-auto">
                           <table className="w-full text-left border-collapse">
                             <thead>
                               <tr className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-wider border-b border-gray-100">
@@ -1422,7 +1540,8 @@ export const PrincipalDashboard = () => {
                             </tbody>
                           </table>
                         </div>
-                      )}
+                      </div>
+                    )}
                     </div>
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -1495,21 +1614,13 @@ export const PrincipalDashboard = () => {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                   <div className="flex items-center justify-end gap-2">
-                                    {exam.status === 'Active' ? (
+                                    {exam.status === 'Active' && (
                                       <button 
                                         onClick={() => processExam(exam.id)}
                                         className="p-2 text-kenya-green hover:bg-kenya-green/10 rounded-lg transition-colors"
                                         title="Process & Lock Marks"
                                       >
                                         <CheckCircle2 className="w-4 h-4" />
-                                      </button>
-                                    ) : (
-                                      <button 
-                                        onClick={() => recallExam(exam.id)}
-                                        className="p-2 text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
-                                        title="Recall Exam"
-                                      >
-                                        <ArrowUpDown className="w-4 h-4" />
                                       </button>
                                     )}
                                     <button 
@@ -1527,88 +1638,6 @@ export const PrincipalDashboard = () => {
                         </table>
                       </div>
                     </div>
-                  </div>
-                ) : academicSubTab === 'edit-marks' ? (
-                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
-                    <h3 className="text-xl font-bold text-kenya-black mb-6">Edit Student Marks</h3>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                      <select 
-                        value={editMarksConfig.examId}
-                        onChange={(e) => setEditMarksConfig({...editMarksConfig, examId: e.target.value})}
-                        className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
-                      >
-                        <option value="">Select Examination...</option>
-                        {exams.map(e => (
-                          <option key={e.id} value={e.id}>{e.title} ({e.term} {e.year})</option>
-                        ))}
-                      </select>
-
-                      <select 
-                        value={editMarksConfig.className}
-                        onChange={(e) => setEditMarksConfig({...editMarksConfig, className: e.target.value})}
-                        className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
-                      >
-                        <option value="">Select Class...</option>
-                        {classes.map(c => (
-                          <option key={c.id} value={c.name}>{c.name}</option>
-                        ))}
-                      </select>
-
-                      <select 
-                        value={editMarksConfig.subject}
-                        onChange={(e) => setEditMarksConfig({...editMarksConfig, subject: e.target.value})}
-                        className="px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
-                      >
-                        <option value="">Select Subject...</option>
-                        {learningAreas.map(la => (
-                          <option key={la} value={la}>{la}</option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {editMarksConfig.examId && editMarksConfig.className && editMarksConfig.subject ? (
-                      <div className="space-y-6">
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left border-collapse">
-                            <thead>
-                              <tr className="bg-gray-50 text-xs font-bold text-gray-400 uppercase tracking-wider border-b border-gray-100">
-                                <th className="px-6 py-4">Adm No</th>
-                                <th className="px-6 py-4">Student Name</th>
-                                <th className="px-6 py-4 w-48">Score (%)</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                              {students.filter(s => s.class === editMarksConfig.className).map(student => (
-                                <tr key={student.id} className="hover:bg-gray-50/50 transition-colors">
-                                  <td className="px-6 py-4 font-mono text-sm text-gray-500">{student.adm}</td>
-                                  <td className="px-6 py-4 font-bold text-kenya-black">{student.name}</td>
-                                  <td className="px-6 py-4">
-                                    <input 
-                                      type="number"
-                                      min="0"
-                                      max="100"
-                                      value={classMarks[student.id] || ''}
-                                      onChange={(e) => setClassMarks({...classMarks, [student.id]: e.target.value})}
-                                      className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold"
-                                      placeholder="--"
-                                    />
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                        <div className="flex justify-end pt-4 border-t border-gray-100">
-                          <Button onClick={saveClassMarks}>Save Marks</Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
-                        <Edit className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                        <p className="text-gray-400 font-medium italic">Please select an exam, class, and subject to edit marks.</p>
-                      </div>
-                    )}
                   </div>
                 ) : academicSubTab === 'reports' ? (
                   <div className="max-w-4xl mx-auto space-y-8">
@@ -1691,6 +1720,15 @@ export const PrincipalDashboard = () => {
                                   className="w-4 h-4 rounded border-gray-300 text-kenya-green focus:ring-kenya-green"
                                 />
                                 <span className="text-sm font-bold text-kenya-black">Show School Letterhead</span>
+                              </label>
+                              <label className="flex items-center gap-3 cursor-pointer">
+                                <input 
+                                  type="checkbox"
+                                  checked={reportConfig.includePerformanceTrend}
+                                  onChange={(e) => setReportConfig({...reportConfig, includePerformanceTrend: e.target.checked})}
+                                  className="w-4 h-4 rounded border-gray-300 text-kenya-green focus:ring-kenya-green"
+                                />
+                                <span className="text-sm font-bold text-kenya-black">Track Performance Trend</span>
                               </label>
                             </div>
                             <div className="space-y-2">
@@ -1870,44 +1908,10 @@ export const PrincipalDashboard = () => {
                         <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100">
                           <p className="text-xs font-black text-gray-400 uppercase mb-4 tracking-widest">Live Preview</p>
                           <div className="bg-white shadow-lg rounded-lg p-8 min-h-[200px] flex flex-col items-center justify-center border border-gray-200">
-                            {schoolSettings.letterheadTemplate === 'standard' && (
-                              <div className="text-center space-y-2 w-full">
-                                {schoolSettings.logo && <img src={schoolSettings.logo} alt="Logo" className="w-20 h-20 mx-auto mb-4 object-contain" />}
-                                <h2 className="text-2xl font-black text-kenya-black uppercase tracking-tight">{schoolSettings.name || 'SCHOOL NAME'}</h2>
-                                <p className="text-sm font-bold italic text-kenya-green">"{schoolSettings.motto || 'School Motto'}"</p>
-                                <div className="text-[10px] text-gray-500 font-bold uppercase tracking-widest pt-2 border-t border-gray-100">
-                                  {schoolSettings.address} | Tel: {schoolSettings.phone} | Email: {schoolSettings.email}
-                                </div>
-                              </div>
-                            )}
-                            {schoolSettings.letterheadTemplate === 'modern' && (
-                              <div className="flex items-start gap-6 w-full">
-                                {schoolSettings.logo && <img src={schoolSettings.logo} alt="Logo" className="w-24 h-24 object-contain" />}
-                                <div className="flex-1">
-                                  <h2 className="text-3xl font-black text-kenya-black uppercase tracking-tight leading-none mb-1">{schoolSettings.name || 'SCHOOL NAME'}</h2>
-                                  <p className="text-sm font-bold text-kenya-green mb-4">{schoolSettings.motto}</p>
-                                  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[9px] text-gray-500 font-bold uppercase">
-                                    <p>Addr: {schoolSettings.address}</p>
-                                    <p>Email: {schoolSettings.email}</p>
-                                    <p>Tel: {schoolSettings.phone}</p>
-                                    <p>Web: {schoolSettings.website}</p>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                            {schoolSettings.letterheadTemplate === 'minimal' && (
-                              <div className="w-full">
-                                <div className="flex justify-between items-center border-b-2 border-kenya-black pb-4 mb-4">
-                                  <h2 className="text-xl font-black text-kenya-black uppercase tracking-tighter">{schoolSettings.name || 'SCHOOL NAME'}</h2>
-                                  {schoolSettings.logo && <img src={schoolSettings.logo} alt="Logo" className="w-12 h-12 object-contain" />}
-                                </div>
-                                <div className="flex justify-between text-[8px] font-black text-gray-400 uppercase tracking-widest">
-                                  <span>{schoolSettings.address}</span>
-                                  <span>{schoolSettings.phone}</span>
-                                  <span>{schoolSettings.email}</span>
-                                </div>
-                              </div>
-                            )}
+                            <Letterhead settings={schoolSettings} />
+                            <div className="w-full h-32 bg-gray-50 rounded border border-dashed border-gray-200 flex items-center justify-center text-gray-400 text-xs italic">
+                              Document Content Area
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2007,25 +2011,6 @@ export const PrincipalDashboard = () => {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-kenya-black ml-1">Staff Username / Email</label>
-                  <div className="relative">
-                    <input 
-                      type="text" 
-                      required
-                      value={newStaff.email}
-                      onChange={(e) => setNewStaff({...newStaff, email: e.target.value})}
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 pr-32"
-                      placeholder="e.g. jane.doe"
-                    />
-                    {!newStaff.email.includes('@') && (
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400 pointer-events-none">
-                        @alakara.ac.ke
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-[10px] text-gray-400 ml-1 uppercase font-bold">Domain @alakara.ac.ke will be appended automatically</p>
-                </div>
-                <div className="space-y-2">
                   <label className="text-sm font-bold text-kenya-black ml-1">Designated Role</label>
                   <select 
                     value={newStaff.role}
@@ -2087,6 +2072,40 @@ export const PrincipalDashboard = () => {
 
                 <Button type="submit" className="w-full py-4 rounded-xl font-bold">{editingStaff ? 'Update Member' : 'Register Member'}</Button>
               </form>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Generated Staff Credentials Modal */}
+        {generatedStaffCreds && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-kenya-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl border border-gray-100"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-2xl font-bold text-kenya-black">Teacher Added</h3>
+                <button onClick={() => setGeneratedStaffCreds(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="space-y-6">
+                <p className="text-gray-600">
+                  Successfully added <span className="font-bold text-kenya-black">{generatedStaffCreds.name}</span>. Please share these login credentials with them:
+                </p>
+                <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100 space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Username</label>
+                    <p className="text-lg font-mono text-kenya-black">{generatedStaffCreds.username}</p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Password</label>
+                    <p className="text-lg font-mono text-kenya-black">{generatedStaffCreds.password}</p>
+                  </div>
+                </div>
+                <Button onClick={() => setGeneratedStaffCreds(null)} className="w-full py-4 rounded-xl font-bold">Done</Button>
+              </div>
             </motion.div>
           </div>
         )}
@@ -2255,6 +2274,230 @@ export const PrincipalDashboard = () => {
               <div className="mt-8 pt-6 border-t border-gray-100 flex gap-3">
                 <Button variant="ghost" onClick={() => setShowEditMarksModal(false)} className="flex-1">Cancel</Button>
                 <Button onClick={saveStudentMarks} className="flex-1">Save Changes</Button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Report Preview Modal */}
+        {showReportPreview && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-kenya-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-[2.5rem] w-full max-w-4xl p-8 shadow-2xl border border-gray-100 max-h-[95vh] overflow-hidden flex flex-col"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-2xl font-bold text-kenya-black">Report Card Preview</h3>
+                  <p className="text-sm text-gray-500">Review the document before printing or distribution.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" onClick={() => window.print()} className="flex items-center gap-2">
+                    <Download className="w-4 h-4" />
+                    Print PDF
+                  </Button>
+                  <button onClick={() => setShowReportPreview(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto pr-2 bg-gray-50 p-8 rounded-3xl border border-gray-100">
+                <div className="bg-white shadow-sm p-12 min-h-[1000px] border border-gray-200 mx-auto max-w-[800px]">
+                  {reportConfig.includeLetterhead && <Letterhead settings={schoolSettings} />}
+                  
+                  <div className="text-center mb-8">
+                    <h1 className="text-xl font-black text-kenya-black uppercase border-b-2 border-kenya-black inline-block pb-1">Academic Performance Report</h1>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-8 mb-8 text-sm">
+                    <div className="space-y-1">
+                      <p><span className="font-bold text-gray-400 uppercase text-[10px]">Student Name:</span> <span className="font-black text-kenya-black">{students.find(s => s.id === reportConfig.selectedStudentId)?.name}</span></p>
+                      <p><span className="font-bold text-gray-400 uppercase text-[10px]">Admission No:</span> <span className="font-black text-kenya-black">{students.find(s => s.id === reportConfig.selectedStudentId)?.adm}</span></p>
+                    </div>
+                    <div className="space-y-1 text-right">
+                      <p><span className="font-bold text-gray-400 uppercase text-[10px]">Class/Grade:</span> <span className="font-black text-kenya-black">{students.find(s => s.id === reportConfig.selectedStudentId)?.class}</span></p>
+                      <p><span className="font-bold text-gray-400 uppercase text-[10px]">Academic Year:</span> <span className="font-black text-kenya-black">2024</span></p>
+                    </div>
+                  </div>
+
+                  <table className="w-full border-collapse mb-8">
+                    <thead>
+                      <tr className="bg-gray-50">
+                        <th className="border border-gray-200 p-3 text-left text-[10px] font-black uppercase text-gray-500">Learning Area</th>
+                        <th className="border border-gray-200 p-3 text-left text-[10px] font-black uppercase text-gray-500">Subject Teacher</th>
+                        {reportConfig.selectedExamIds.map(id => (
+                          <th key={id} className="border border-gray-200 p-3 text-center text-[10px] font-black uppercase text-gray-500">
+                            {exams.find(e => e.id === id)?.title}
+                          </th>
+                        ))}
+                        {reportConfig.includeAverages && (
+                          <th className="border border-gray-200 p-3 text-center text-[10px] font-black uppercase text-kenya-green">Average</th>
+                        )}
+                        {reportConfig.includeGrades && (
+                          <th className="border border-gray-200 p-3 text-center text-[10px] font-black uppercase text-kenya-red">Grade</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {learningAreas.map(subject => {
+                        const student = students.find(s => s.id === reportConfig.selectedStudentId);
+                        const subjectTeacher = staff.find(t => 
+                          t.assignedSubjects?.includes(subject) && 
+                          t.assignedClasses?.includes(student?.class)
+                        );
+
+                        const scores = reportConfig.selectedExamIds.map(id => {
+                          const mark = marks.find(m => m.studentId === reportConfig.selectedStudentId && m.examId === id && m.subject === subject);
+                          return mark ? parseFloat(mark.score) : null;
+                        });
+                        const validScores = scores.filter(s => s !== null) as number[];
+                        const avg = validScores.length > 0 ? validScores.reduce((a, b) => a + b, 0) / validScores.length : null;
+                        const grade = avg !== null ? gradingSystem.find(g => avg >= g.min && avg <= g.max)?.grade || '--' : '--';
+
+                        return (
+                          <tr key={subject}>
+                            <td className="border border-gray-200 p-3 font-bold text-kenya-black text-sm">{subject}</td>
+                            <td className="border border-gray-200 p-3 text-gray-500 text-[11px] font-medium italic">{subjectTeacher?.name || 'Not Assigned'}</td>
+                            {scores.map((score, idx) => (
+                              <td key={idx} className="border border-gray-200 p-3 text-center font-mono text-sm">{score !== null ? score : '--'}</td>
+                            ))}
+                            {reportConfig.includeAverages && (
+                              <td className="border border-gray-200 p-3 text-center font-black text-kenya-green text-sm">{avg !== null ? avg.toFixed(1) : '--'}</td>
+                            )}
+                            {reportConfig.includeGrades && (
+                              <td className="border border-gray-200 p-3 text-center font-black text-kenya-red text-sm">{grade}</td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+
+                  {reportConfig.includePerformanceTrend && (
+                    <div className="mt-12 space-y-8">
+                      <div className="border-t-2 border-kenya-black pt-6">
+                        <h3 className="text-lg font-black text-kenya-black uppercase mb-6 flex items-center gap-2">
+                          <BarChart3 className="w-5 h-5 text-kenya-green" />
+                          Performance Trend Analysis
+                        </h3>
+                        
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                          {/* Graph Section */}
+                          <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+                            <p className="text-[10px] font-black text-gray-400 uppercase mb-4 tracking-widest">Mean Score Trend</p>
+                            <div className="h-64 w-full">
+                              <ResponsiveContainer width="100%" height="100%">
+                                {reportConfig.graphType === 'bar' ? (
+                                  <BarChart data={reportConfig.selectedExamIds.map(id => {
+                                    const exam = exams.find(e => e.id === id);
+                                    const studentMarks = marks.filter(m => m.studentId === reportConfig.selectedStudentId && m.examId === id);
+                                    const total = studentMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+                                    const mean = studentMarks.length > 0 ? total / studentMarks.length : 0;
+                                    return { name: exam?.title || 'Exam', mean: parseFloat(mean.toFixed(1)) };
+                                  })}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                    <XAxis dataKey="name" fontSize={10} fontWeight="bold" tick={{fill: '#141414'}} axisLine={false} tickLine={false} />
+                                    <YAxis fontSize={10} fontWeight="bold" tick={{fill: '#141414'}} axisLine={false} tickLine={false} domain={[0, 100]} />
+                                    <Tooltip 
+                                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                      cursor={{ fill: '#F3F4F6' }}
+                                    />
+                                    <Bar dataKey="mean" fill="#006837" radius={[4, 4, 0, 0]} barSize={40} />
+                                  </BarChart>
+                                ) : (
+                                  <LineChart data={reportConfig.selectedExamIds.map(id => {
+                                    const exam = exams.find(e => e.id === id);
+                                    const studentMarks = marks.filter(m => m.studentId === reportConfig.selectedStudentId && m.examId === id);
+                                    const total = studentMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+                                    const mean = studentMarks.length > 0 ? total / studentMarks.length : 0;
+                                    return { name: exam?.title || 'Exam', mean: parseFloat(mean.toFixed(1)) };
+                                  })}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
+                                    <XAxis dataKey="name" fontSize={10} fontWeight="bold" tick={{fill: '#141414'}} axisLine={false} tickLine={false} />
+                                    <YAxis fontSize={10} fontWeight="bold" tick={{fill: '#141414'}} axisLine={false} tickLine={false} domain={[0, 100]} />
+                                    <Tooltip 
+                                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                                    />
+                                    <Line type="monotone" dataKey="mean" stroke="#006837" strokeWidth={4} dot={{ r: 6, fill: '#006837', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8 }} />
+                                  </LineChart>
+                                )}
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+
+                          {/* Position Table Section */}
+                          <div className="space-y-4">
+                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Termly Position Summary</p>
+                            <div className="overflow-hidden rounded-2xl border border-gray-100">
+                              <table className="w-full text-left text-xs">
+                                <thead className="bg-gray-50 border-b border-gray-100">
+                                  <tr>
+                                    <th className="px-4 py-3 font-black text-kenya-black uppercase">Exam / Term</th>
+                                    <th className="px-4 py-3 font-black text-kenya-black uppercase text-center">Mean</th>
+                                    <th className="px-4 py-3 font-black text-kenya-black uppercase text-center">Pos</th>
+                                    <th className="px-4 py-3 font-black text-kenya-black uppercase text-center">Out of</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-50">
+                                  {reportConfig.selectedExamIds.map(id => {
+                                    const exam = exams.find(e => e.id === id);
+                                    if (!exam) return null;
+                                    
+                                    const student = students.find(s => s.id === reportConfig.selectedStudentId);
+                                    const classStudents = students.filter(s => s.class === student?.class);
+                                    
+                                    const examMarks = marks.filter(m => m.examId === id);
+                                    
+                                    // Calculate total scores for all students in the class
+                                    const rankings = classStudents.map(s => {
+                                      const sMarks = examMarks.filter(m => m.studentId === s.id);
+                                      const total = sMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+                                      return { id: s.id, total };
+                                    }).sort((a, b) => b.total - a.total);
+                                    
+                                    const position = rankings.findIndex(r => r.id === reportConfig.selectedStudentId) + 1;
+                                    const studentMarks = examMarks.filter(m => m.studentId === reportConfig.selectedStudentId);
+                                    const total = studentMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+                                    const mean = studentMarks.length > 0 ? total / studentMarks.length : 0;
+
+                                    return (
+                                      <tr key={id} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="px-4 py-3 font-bold text-kenya-black">
+                                          {exam.title}
+                                          <span className="block text-[10px] text-gray-400 font-medium">{exam.term} {exam.year}</span>
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-black text-kenya-green">{mean.toFixed(1)}</td>
+                                        <td className="px-4 py-3 text-center">
+                                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-kenya-black text-white font-black text-[10px]">
+                                            {position}
+                                          </span>
+                                        </td>
+                                        <td className="px-4 py-3 text-center font-bold text-gray-400">{classStudents.length}</td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-12 grid grid-cols-2 gap-12">
+                    <div className="border-t border-gray-200 pt-4">
+                      <p className="text-[10px] font-black text-gray-400 uppercase mb-8">Class Teacher's Remarks</p>
+                      <div className="h-12 border-b border-gray-100 italic text-gray-400 text-xs">Sign: ____________________</div>
+                    </div>
+                    <div className="border-t border-gray-200 pt-4">
+                      <p className="text-[10px] font-black text-gray-400 uppercase mb-8">Principal's Remarks</p>
+                      <div className="h-12 border-b border-gray-100 italic text-gray-400 text-xs">Sign: ____________________</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </motion.div>
           </div>

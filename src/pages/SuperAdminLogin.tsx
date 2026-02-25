@@ -3,12 +3,14 @@ import { motion } from 'motion/react';
 import { GraduationCap, Lock, User, ArrowLeft, ShieldAlert } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
+import { PasswordResetModal } from '../components/PasswordResetModal';
 
 export const SuperAdminLogin = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showResetModal, setShowResetModal] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -139,9 +141,13 @@ export const SuperAdminLogin = () => {
               </div>
 
               <div className="text-[10px]">
-                <a href="#" className="font-bold text-kenya-red hover:text-red-400 uppercase tracking-wider">
+                <button 
+                  type="button"
+                  onClick={() => setShowResetModal(true)}
+                  className="font-bold text-kenya-red hover:text-red-400 uppercase tracking-wider"
+                >
                   Reset Key
-                </a>
+                </button>
               </div>
             </div>
 
@@ -165,6 +171,12 @@ export const SuperAdminLogin = () => {
           </div>
         </motion.div>
         
+        <PasswordResetModal 
+          isOpen={showResetModal} 
+          onClose={() => setShowResetModal(false)} 
+          role="super-admin" 
+        />
+
         <div className="mt-8 flex justify-between items-center px-2">
           <p className="text-[9px] text-gray-600 uppercase tracking-[0.3em]">
             &copy; 2026 Alakara KE HQ

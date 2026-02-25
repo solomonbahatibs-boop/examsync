@@ -51,10 +51,54 @@ export const TeacherDashboard = () => {
     return saved ? JSON.parse(saved) : [];
   });
   const [currentMarks, setCurrentMarks] = useState<any>({});
-  const [activeTab, setActiveTab] = useState<'exams' | 'analysis' | 'class-management' | 'profile'>('exams');
-  const [assignedClasses] = useState<string[]>(['Form 1', 'Grade 7']); // Mock assigned classes
-  const [teacherRole] = useState<'Teacher' | 'Class Teacher'>('Class Teacher'); // Mock role
-  const [managedClass] = useState<string>('Form 1'); // Mock managed class
+  const [activeTab, setActiveTab] = useState<'exams' | 'analysis' | 'class-management' | 'materials' | 'profile'>('exams');
+  const [currentTeacher, setCurrentTeacher] = useState<any>(() => {
+    const saved = localStorage.getItem('alakara_current_teacher');
+    return saved ? JSON.parse(saved) : { name: 'Teacher', role: 'Class Teacher', assignedClasses: ['Form 1', 'Grade 7'] };
+  });
+
+  const [examMaterials, setExamMaterials] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_exam_materials');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [showAddMaterialModal, setShowAddMaterialModal] = useState(false);
+  const [newMaterial, setNewMaterial] = useState({
+    title: '',
+    subject: 'Mathematics',
+    fileType: 'PDF' as 'PDF' | 'DOCX' | 'ZIP'
+  });
+
+  useEffect(() => {
+    localStorage.setItem('alakara_exam_materials', JSON.stringify(examMaterials));
+  }, [examMaterials]);
+
+  const handleAddMaterial = (e: FormEvent) => {
+    e.preventDefault();
+    const material = {
+      id: Math.random().toString(36).substr(2, 9),
+      ...newMaterial,
+      schoolName: 'Alakara Academy', // Mock school name
+      teacherName: currentTeacher.name,
+      uploadDate: new Date().toLocaleDateString(),
+      status: 'Pending',
+      visibility: 'Public'
+    };
+    setExamMaterials([material, ...examMaterials]);
+    setShowAddMaterialModal(false);
+    setNewMaterial({ title: '', subject: 'Mathematics', fileType: 'PDF' });
+    alert('Material uploaded and sent for approval!');
+  };
+
+  const deleteMaterial = (id: string) => {
+    if (window.confirm('Delete this material?')) {
+      setExamMaterials(examMaterials.filter(m => m.id !== id));
+    }
+  };
+
+  const [assignedClasses] = useState<string[]>(currentTeacher.assignedClasses || ['Form 1', 'Grade 7']);
+  const [teacherRole] = useState<'Teacher' | 'Class Teacher'>(currentTeacher.role === 'Class Teacher' ? 'Class Teacher' : 'Teacher');
+  const [managedClass] = useState<string>(assignedClasses[0] || 'Form 1');
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState('');
   const [analysisOptions, setAnalysisOptions] = useState({
     showGrades: true,
@@ -320,6 +364,13 @@ export const TeacherDashboard = () => {
             >
               <BarChart3 className="w-5 h-5" />
               Exam Analysis
+            </button>
+            <button 
+              onClick={() => { setActiveTab('materials'); setActiveExam(null); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all ${activeTab === 'materials' ? 'bg-kenya-green text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+            >
+              <FileText className="w-5 h-5" />
+              Materials
             </button>
             {teacherRole === 'Class Teacher' && (
               <button 
@@ -720,6 +771,72 @@ export const TeacherDashboard = () => {
                 </div>
               )}
             </div>
+          ) : activeTab === 'materials' ? (
+            <div className="space-y-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-black text-kenya-black uppercase tracking-tight">Learning Materials</h1>
+                  <p className="text-gray-500">Upload and manage exam materials and revision guides.</p>
+                </div>
+                <Button onClick={() => setShowAddMaterialModal(true)} className="gap-2 rounded-2xl shadow-lg shadow-kenya-green/20">
+                  <Upload className="w-5 h-5" />
+                  Upload Material
+                </Button>
+              </div>
+
+              <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        <th className="px-8 py-4">Title</th>
+                        <th className="px-8 py-4">Subject</th>
+                        <th className="px-8 py-4">Status</th>
+                        <th className="px-8 py-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {examMaterials.filter(m => m.teacherName === currentTeacher.name).map((material) => (
+                        <tr key={material.id} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-8 py-6">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-gray-100 rounded-lg">
+                                <FileText className="w-4 h-4 text-gray-500" />
+                              </div>
+                              <span className="font-bold text-kenya-black">{material.title}</span>
+                            </div>
+                          </td>
+                          <td className="px-8 py-6 font-bold text-kenya-green text-sm">{material.subject}</td>
+                          <td className="px-8 py-6">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                              material.status === 'Approved' ? 'bg-kenya-green/10 text-kenya-green' :
+                              material.status === 'Rejected' ? 'bg-kenya-red/10 text-kenya-red' : 'bg-yellow-100 text-yellow-700'
+                            }`}>
+                              {material.status}
+                            </span>
+                          </td>
+                          <td className="px-8 py-6 text-right">
+                            <button 
+                              onClick={() => deleteMaterial(material.id)}
+                              className="p-2 text-gray-400 hover:text-kenya-red transition-colors"
+                            >
+                              <Trash2 className="w-5 h-5" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {examMaterials.filter(m => m.teacherName === currentTeacher.name).length === 0 && (
+                        <tr>
+                          <td colSpan={4} className="px-8 py-12 text-center text-gray-400 italic">
+                            No materials uploaded yet.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
           ) : activeTab === 'class-management' ? (
             <div className="space-y-8">
               <div className="flex items-center justify-between">
@@ -778,14 +895,14 @@ export const TeacherDashboard = () => {
                     <GraduationCap className="w-8 h-8 text-kenya-green" />
                   </div>
                   <div>
-                    <p className="text-xl font-bold text-kenya-black">Mr. John Kamau</p>
-                    <p className="text-gray-500">Mathematics Department</p>
+                    <p className="text-xl font-bold text-kenya-black">{currentTeacher.name}</p>
+                    <p className="text-gray-500">{currentTeacher.role}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="p-4 border border-gray-100 rounded-xl">
-                    <p className="text-xs text-gray-400 uppercase font-bold mb-1">Email Address</p>
-                    <p className="font-bold text-kenya-black">j.kamau@alakara.ac.ke</p>
+                    <p className="text-xs text-gray-400 uppercase font-bold mb-1">Email Address / Username</p>
+                    <p className="font-bold text-kenya-black">{currentTeacher.username || currentTeacher.email || 'j.kamau@alakara.ac.ke'}</p>
                   </div>
                   <div className="p-4 border border-gray-100 rounded-xl">
                     <p className="text-xs text-gray-400 uppercase font-bold mb-1">Staff ID</p>
@@ -796,6 +913,63 @@ export const TeacherDashboard = () => {
             </div>
           )}
         </div>
+        {/* Add Material Modal */}
+        {showAddMaterialModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-kenya-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl border border-gray-100"
+            >
+              <div className="flex items-center justify-between mb-8">
+                <h3 className="text-2xl font-bold text-kenya-black">Upload Material</h3>
+                <button onClick={() => setShowAddMaterialModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleAddMaterial} className="space-y-6">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-kenya-black ml-1">Material Title</label>
+                  <input 
+                    type="text" 
+                    required
+                    value={newMaterial.title}
+                    onChange={(e) => setNewMaterial({...newMaterial, title: e.target.value})}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                    placeholder="e.g. Mathematics Revision Guide"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-kenya-black ml-1">Subject</label>
+                  <select 
+                    value={newMaterial.subject}
+                    onChange={(e) => setNewMaterial({...newMaterial, subject: e.target.value})}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                  >
+                    {learningAreas.map(la => (
+                      <option key={la} value={la}>{la}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-kenya-black ml-1">File Type</label>
+                  <select 
+                    value={newMaterial.fileType}
+                    onChange={(e) => setNewMaterial({...newMaterial, fileType: e.target.value as any})}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                  >
+                    <option value="PDF">PDF Document</option>
+                    <option value="DOCX">Word Document</option>
+                    <option value="ZIP">Compressed Archive</option>
+                  </select>
+                </div>
+                <Button type="submit" className="w-full py-4 rounded-xl font-bold">Upload & Send for Approval</Button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
         {/* Add Student Modal */}
         {showAddStudentModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-kenya-black/60 backdrop-blur-sm">

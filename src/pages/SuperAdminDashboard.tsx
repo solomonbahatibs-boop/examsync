@@ -22,7 +22,9 @@ import {
   ShieldAlert,
   Trash2,
   Eye,
-  EyeOff
+  EyeOff,
+  MessageSquare,
+  Quote
 } from 'lucide-react';
 import { 
   ResponsiveContainer, 
@@ -69,8 +71,9 @@ interface ExamMaterial {
 
 export const SuperAdminDashboard = () => {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'schools' | 'analytics' | 'exams'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'schools' | 'analytics' | 'exams' | 'stories'>('dashboard');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showStoryModal, setShowStoryModal] = useState(false);
   const [generatedCreds, setGeneratedCreds] = useState<{ principal: string; teacher: string; pass: string } | null>(null);
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Pending' | 'Suspended'>('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,6 +117,38 @@ export const SuperAdminDashboard = () => {
       }
     ];
   });
+
+  const [successStories, setSuccessStories] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_success_stories');
+    if (saved) return JSON.parse(saved);
+    return [
+      {
+        id: '1',
+        name: 'Dr. Sarah Jenkins',
+        role: 'Principal, Oakwood Academy',
+        content: 'Alakara KE has completely transformed how we handle end-of-term examinations. The automated grading alone has saved our teachers hundreds of hours.',
+        image: 'https://picsum.photos/seed/sarah/100/100',
+      },
+      {
+        id: '2',
+        name: 'Mark Thompson',
+        role: 'Exam Officer, City High School',
+        content: 'The real-time analytics provide insights we never had before. We can now identify struggling students instantly and provide targeted support.',
+        image: 'https://picsum.photos/seed/mark/100/100',
+      },
+      {
+        id: '3',
+        name: 'Linda Chen',
+        role: 'IT Director, Global International',
+        content: 'Integration was seamless. The Supabase-backed infrastructure gives us peace of mind regarding data security and system reliability.',
+        image: 'https://picsum.photos/seed/linda/100/100',
+      },
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('alakara_success_stories', JSON.stringify(successStories));
+  }, [successStories]);
 
   useEffect(() => {
     localStorage.setItem('alakara_exam_materials', JSON.stringify(examMaterials));
@@ -172,6 +207,12 @@ export const SuperAdminDashboard = () => {
     students: '',
   });
 
+  const [newStory, setNewStory] = useState({
+    name: '',
+    role: '',
+    content: '',
+  });
+
   const generateCredentials = (schoolName: string) => {
     const slug = schoolName.toLowerCase().replace(/\s+/g, '');
     const pass = Math.random().toString(36).slice(-8).toUpperCase();
@@ -200,6 +241,24 @@ export const SuperAdminDashboard = () => {
     setSchools([school, ...schools]);
     setGeneratedCreds({ principal: creds.principal, teacher: creds.teacher, pass: creds.pass });
     setNewSchool({ name: '', location: '', students: '' });
+  };
+
+  const handleAddStory = (e: FormEvent) => {
+    e.preventDefault();
+    const story = {
+      id: Math.random().toString(36).substr(2, 9),
+      ...newStory,
+      image: `https://picsum.photos/seed/${newStory.name}/100/100`
+    };
+    setSuccessStories([story, ...successStories]);
+    setNewStory({ name: '', role: '', content: '' });
+    setShowStoryModal(false);
+  };
+
+  const handleDeleteStory = (id: string) => {
+    if (window.confirm('Delete this success story?')) {
+      setSuccessStories(successStories.filter(s => s.id !== id));
+    }
   };
 
   const stats = [
@@ -309,6 +368,13 @@ export const SuperAdminDashboard = () => {
           >
             <BookOpen className="w-5 h-5" />
             Exams
+          </button>
+          <button 
+            onClick={() => setActiveTab('stories')}
+            className={`flex items-center gap-3 px-4 py-3 w-full rounded-xl font-medium transition-all ${activeTab === 'stories' ? 'bg-kenya-green/10 text-kenya-green' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <MessageSquare className="w-5 h-5" />
+            Success Stories
           </button>
           <button 
             onClick={() => setActiveTab('analytics')}
@@ -783,6 +849,52 @@ export const SuperAdminDashboard = () => {
                 </div>
               </div>
             </div>
+          ) : activeTab === 'stories' ? (
+            <div className="space-y-8">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold text-kenya-black">Success Stories Management</h1>
+                  <p className="text-gray-500">Manage testimonials and success stories displayed on the landing page.</p>
+                </div>
+                <Button onClick={() => setShowStoryModal(true)} className="gap-2">
+                  <Plus className="w-4 h-4" />
+                  Add Success Story
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {successStories.map((story) => (
+                  <motion.div
+                    key={story.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm relative group"
+                  >
+                    <button 
+                      onClick={() => handleDeleteStory(story.id)}
+                      className="absolute top-4 right-4 p-2 text-gray-400 hover:text-kenya-red opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                    <div className="flex items-center gap-4 mb-4">
+                      <img 
+                        src={story.image} 
+                        alt={story.name} 
+                        className="w-12 h-12 rounded-full object-cover border-2 border-gray-50"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div>
+                        <h4 className="font-bold text-kenya-black">{story.name}</h4>
+                        <p className="text-xs text-gray-500">{story.role}</p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-600 italic leading-relaxed">
+                      "{story.content}"
+                    </p>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
           ) : (
             <div className="space-y-8">
               <div className="mb-8">
@@ -985,6 +1097,63 @@ export const SuperAdminDashboard = () => {
                     <Button onClick={() => setShowAddModal(false)} className="w-full">Done</Button>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Add Story Modal */}
+        {showStoryModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gray-50">
+                <h3 className="text-xl font-bold text-kenya-black">Add Success Story</h3>
+                <button onClick={() => setShowStoryModal(false)} className="p-2 hover:bg-gray-200 rounded-full transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-8">
+                <form onSubmit={handleAddStory} className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Person Name</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={newStory.name}
+                      onChange={(e) => setNewStory({ ...newStory, name: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 focus:border-kenya-green"
+                      placeholder="e.g. Dr. Sarah Jenkins"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Role / Title</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={newStory.role}
+                      onChange={(e) => setNewStory({ ...newStory, role: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 focus:border-kenya-green"
+                      placeholder="e.g. Principal, Oakwood Academy"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-gray-700 mb-2">Success Story / Content</label>
+                    <textarea 
+                      required
+                      rows={4}
+                      value={newStory.content}
+                      onChange={(e) => setNewStory({ ...newStory, content: e.target.value })}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 focus:border-kenya-green resize-none"
+                      placeholder="Share the success story..."
+                    />
+                  </div>
+                  <Button type="submit" className="w-full py-4">Publish Story</Button>
+                </form>
               </div>
             </motion.div>
           </div>

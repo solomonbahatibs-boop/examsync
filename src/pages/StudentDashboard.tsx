@@ -18,22 +18,43 @@ import { Button } from '../components/Button';
 export const StudentDashboard = () => {
   const navigate = useNavigate();
   const [materials, setMaterials] = useState<any[]>([]);
+  const [exams, setExams] = useState<any[]>([]);
+  const [marks, setMarks] = useState<any[]>([]);
+  const [staff, setStaff] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'learning' | 'exams' | 'results' | 'materials'>('learning');
 
+  const [currentStudent, setCurrentStudent] = useState<any>(() => {
+    const saved = localStorage.getItem('alakara_current_student');
+    return saved ? JSON.parse(saved) : { id: 'S1', name: 'Alice Wanjiku', adm: 'ADM-2024-001', class: 'Form 1' };
+  });
+
   useEffect(() => {
-    const loadMaterials = () => {
-      const saved = localStorage.getItem('alakara_exam_materials');
-      if (saved) {
-        const allMaterials = JSON.parse(saved);
-        // Only show approved AND public materials to students
+    const loadData = () => {
+      const savedMaterials = localStorage.getItem('alakara_exam_materials');
+      if (savedMaterials) {
+        const allMaterials = JSON.parse(savedMaterials);
         setMaterials(allMaterials.filter((m: any) => m.status === 'Approved' && m.visibility === 'Public'));
+      }
+
+      const savedExams = localStorage.getItem('alakara_exams');
+      if (savedExams) {
+        setExams(JSON.parse(savedExams).filter((e: any) => e.classes.includes(currentStudent.class)));
+      }
+
+      const savedMarks = localStorage.getItem('alakara_marks');
+      if (savedMarks) {
+        setMarks(JSON.parse(savedMarks).filter((m: any) => m.studentId === currentStudent.id));
+      }
+
+      const savedStaff = localStorage.getItem('alakara_staff');
+      if (savedStaff) {
+        setStaff(JSON.parse(savedStaff));
       }
     };
 
-    loadMaterials();
-    // Poll for updates in this demo
-    const interval = setInterval(loadMaterials, 2000);
+    loadData();
+    const interval = setInterval(loadData, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -131,7 +152,155 @@ export const StudentDashboard = () => {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-10 bg-[#f0f0f0]">
-          {activeTab === 'materials' ? (
+          {activeTab === 'learning' ? (
+            <div className="space-y-12">
+              <div className="mb-12">
+                <h1 className="text-5xl font-black text-black uppercase tracking-tighter italic mb-4">My Learning Journey</h1>
+                <div className="h-4 w-48 bg-[#FF6321] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                <div className="bg-white border-4 border-black p-8 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
+                  <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Current Class</p>
+                  <p className="text-4xl font-black text-black uppercase italic">{currentStudent.class}</p>
+                </div>
+                <div className="bg-white border-4 border-black p-8 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
+                  <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Total Exams</p>
+                  <p className="text-4xl font-black text-black uppercase italic">{exams.length}</p>
+                </div>
+                <div className="bg-white border-4 border-black p-8 shadow-[12px_12px_0px_0px_rgba(0,0,0,1)]">
+                  <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Learning Areas</p>
+                  <p className="text-4xl font-black text-black uppercase italic">8</p>
+                </div>
+              </div>
+
+              <div className="bg-white border-4 border-black p-10 shadow-[16px_16px_0px_0px_rgba(0,0,0,1)]">
+                <h3 className="text-3xl font-black text-black uppercase tracking-tight mb-8 italic">Subject Performance Summary</h3>
+                <div className="space-y-6">
+                  {['Mathematics', 'English', 'Kiswahili', 'Science'].map(subject => {
+                    const subjectMarks = marks.filter(m => m.subject === subject);
+                    const avg = subjectMarks.length > 0 
+                      ? subjectMarks.reduce((sum, m) => sum + parseFloat(m.score), 0) / subjectMarks.length 
+                      : 0;
+                    return (
+                      <div key={subject} className="space-y-2">
+                        <div className="flex justify-between font-black uppercase tracking-widest text-sm">
+                          <span>{subject}</span>
+                          <span>{avg.toFixed(1)}%</span>
+                        </div>
+                        <div className="h-6 bg-gray-100 border-2 border-black">
+                          <div 
+                            className="h-full bg-[#FF6321] border-r-2 border-black transition-all duration-1000" 
+                            style={{ width: `${avg}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'exams' ? (
+            <div className="space-y-12">
+              <div className="mb-12">
+                <h1 className="text-5xl font-black text-black uppercase tracking-tighter italic mb-4">Examination Schedule</h1>
+                <div className="h-4 w-48 bg-[#FF6321] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" />
+              </div>
+
+              <div className="grid grid-cols-1 gap-6">
+                {exams.map((exam, index) => (
+                  <motion.div
+                    key={exam.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className="bg-white border-4 border-black p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row md:items-center justify-between gap-6"
+                  >
+                    <div>
+                      <h3 className="text-2xl font-black text-black uppercase tracking-tight mb-1">{exam.title}</h3>
+                      <p className="text-sm font-bold text-gray-500 uppercase">{exam.term} - {exam.year}</p>
+                    </div>
+                    <div className="flex items-center gap-8">
+                      <div className="text-center">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Status</p>
+                        <span className={`px-4 py-1 border-2 border-black font-black uppercase text-xs ${
+                          exam.status === 'Active' ? 'bg-green-400 text-black' : 'bg-gray-200 text-gray-500'
+                        }`}>
+                          {exam.status}
+                        </span>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Date</p>
+                        <p className="font-black text-black uppercase text-sm">{exam.startDate || 'TBA'}</p>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+                {exams.length === 0 && (
+                  <div className="py-20 text-center border-8 border-dashed border-black/10">
+                    <p className="text-3xl font-black text-black/20 uppercase italic">No exams scheduled yet</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : activeTab === 'results' ? (
+            <div className="space-y-12">
+              <div className="mb-12">
+                <h1 className="text-5xl font-black text-black uppercase tracking-tighter italic mb-4">My Academic Results</h1>
+                <div className="h-4 w-48 bg-[#FF6321] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" />
+              </div>
+
+              <div className="bg-white border-4 border-black shadow-[16px_16px_0px_0px_rgba(0,0,0,1)] overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-black text-white">
+                      <th className="px-8 py-6 font-black uppercase tracking-widest text-sm">Subject</th>
+                      <th className="px-8 py-6 font-black uppercase tracking-widest text-sm">Teacher</th>
+                      <th className="px-8 py-6 font-black uppercase tracking-widest text-sm">Exam</th>
+                      <th className="px-8 py-6 font-black uppercase tracking-widest text-sm text-center">Score</th>
+                      <th className="px-8 py-6 font-black uppercase tracking-widest text-sm text-center">Grade</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y-4 divide-black">
+                    {marks.map((mark, index) => {
+                      const exam = exams.find(e => e.id === mark.examId);
+                      const subjectTeacher = staff.find(t => 
+                        t.assignedSubjects?.includes(mark.subject) && 
+                        t.assignedClasses?.includes(currentStudent.class)
+                      );
+                      const score = parseFloat(mark.score);
+                      let grade = 'E';
+                      if (score >= 80) grade = 'A';
+                      else if (score >= 70) grade = 'B';
+                      else if (score >= 60) grade = 'C';
+                      else if (score >= 50) grade = 'D';
+                      
+                      return (
+                        <tr key={mark.id} className="hover:bg-gray-50 transition-colors">
+                          <td className="px-8 py-6 font-black uppercase text-black">{mark.subject}</td>
+                          <td className="px-8 py-6 font-bold uppercase text-gray-500 text-xs italic">{subjectTeacher?.name || 'Not Assigned'}</td>
+                          <td className="px-8 py-6 font-bold uppercase text-gray-500 text-sm">{exam?.title || 'Unknown Exam'}</td>
+                          <td className="px-8 py-6 font-black text-2xl text-center text-black">{score}%</td>
+                          <td className="px-8 py-6 text-center">
+                            <span className="inline-flex items-center justify-center w-12 h-12 bg-black text-white font-black text-xl italic">
+                              {grade}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {marks.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-8 py-20 text-center text-gray-400 font-black uppercase italic">
+                          No results posted yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : activeTab === 'materials' ? (
             <>
               <div className="mb-12">
                 <h1 className="text-5xl font-black text-black uppercase tracking-tighter italic mb-4">Approved Learning Materials</h1>
