@@ -61,7 +61,6 @@ export const PrincipalDashboard = () => {
   const navigate = useNavigate();
   const [school, setSchool] = useState<any>(null);
   const [isSuspended, setIsSuspended] = useState(false);
-  const [daysToExpiry, setDaysToExpiry] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'staff' | 'students' | 'academic' | 'settings' | 'classes'>('dashboard');
   const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports'>('overview');
   const [showAddStaffModal, setShowAddStaffModal] = useState(false);
@@ -225,22 +224,7 @@ export const PrincipalDashboard = () => {
       
       if (updatedSchool) {
         setSchool(updatedSchool);
-        
-        // Check subscription expiry
-        const expiryDate = updatedSchool.subscriptionExpiresAt ? new Date(updatedSchool.subscriptionExpiresAt) : null;
-        const now = new Date();
-        const isExpired = expiryDate ? expiryDate < now : false;
-        
-        setIsSuspended(updatedSchool.status === 'Suspended' || isExpired);
-
-        if (expiryDate) {
-          const diffTime = expiryDate.getTime() - now.getTime();
-          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          setDaysToExpiry(diffDays);
-        } else {
-          setDaysToExpiry(null);
-        }
-
+        setIsSuspended(updatedSchool.status === 'Suspended');
         setSchoolSettings({
           name: updatedSchool.name || '',
           motto: updatedSchool.motto || '',
@@ -491,12 +475,6 @@ export const PrincipalDashboard = () => {
     }
   };
 
-  const recallExam = (id: string) => {
-    if (window.confirm('Are you sure you want to recall this exam? Teachers will be able to edit scores again.')) {
-      setExams(exams.map(e => e.id === id ? { ...e, status: 'Active' } : e));
-    }
-  };
-
   const deleteExam = (id: string) => {
     if (window.confirm('Delete this exam? All associated marks will be lost.')) {
       setExams(exams.filter(e => e.id !== id));
@@ -531,18 +509,6 @@ export const PrincipalDashboard = () => {
     const newGrading = [...gradingSystem];
     newGrading[index] = { ...newGrading[index], [field]: value };
     setGradingSystem(newGrading);
-  };
-
-  const addGrade = () => {
-    setGradingSystem([...gradingSystem, { grade: 'New', min: 0, max: 0, points: 0 }]);
-  };
-
-  const removeGrade = (index: number) => {
-    if (window.confirm('Remove this grade?')) {
-      const newGrading = [...gradingSystem];
-      newGrading.splice(index, 1);
-      setGradingSystem(newGrading);
-    }
   };
 
   const mockAnalysisData = [
@@ -871,27 +837,6 @@ export const PrincipalDashboard = () => {
 
         {/* Dashboard Content */}
         <div className="flex-1 overflow-y-auto p-8 relative">
-          {daysToExpiry !== null && daysToExpiry <= 15 && daysToExpiry > 0 && !isSuspended && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="mb-8 bg-amber-500 p-6 rounded-[2rem] text-white shadow-xl flex flex-col md:flex-row items-center gap-6 border-4 border-white/20"
-            >
-              <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-md">
-                <AlertTriangle className="w-10 h-10 text-white" />
-              </div>
-              <div className="flex-1 text-center md:text-left">
-                <h3 className="text-xl font-black uppercase tracking-tight">Subscription Expiring Soon</h3>
-                <p className="font-bold text-white/90">
-                  Your system access will be automatically suspended in <span className="text-2xl font-black underline decoration-white/40">{daysToExpiry} days</span>.
-                </p>
-              </div>
-              <div className="bg-white/10 px-6 py-3 rounded-2xl font-black text-xl border border-white/20">
-                Expires: {new Date(school.subscriptionExpiresAt).toLocaleDateString()}
-              </div>
-            </motion.div>
-          )}
-
           {isSuspended && (
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -902,13 +847,9 @@ export const PrincipalDashboard = () => {
                 <AlertTriangle className="w-16 h-16 text-white animate-pulse" />
               </div>
               <div className="flex-1 text-center md:text-left">
-                <h2 className="text-3xl font-black mb-2 uppercase tracking-tight">
-                  {daysToExpiry !== null && daysToExpiry <= 0 ? 'Subscription Expired' : 'Account Suspended'}
-                </h2>
+                <h2 className="text-3xl font-black mb-2 uppercase tracking-tight">Account Suspended</h2>
                 <p className="text-xl font-bold text-white/90 mb-6">
-                  {daysToExpiry !== null && daysToExpiry <= 0 
-                    ? 'Your school subscription has expired. Please renew to regain access to management features.'
-                    : 'Access to school management features has been restricted by the system administrator.'}
+                  Access to school management features has been restricted by the system administrator.
                 </p>
                 <div className="inline-flex items-center gap-4 bg-white text-kenya-red px-8 py-4 rounded-2xl font-black text-2xl shadow-lg">
                   <Phone className="w-8 h-8" />
@@ -1407,15 +1348,9 @@ export const PrincipalDashboard = () => {
                   </div>
                 ) : academicSubTab === 'grading' ? (
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                    <div className="p-8 border-b border-gray-100 flex items-center justify-between">
-                      <div>
-                        <h3 className="text-xl font-bold text-kenya-black">Grading System Configuration</h3>
-                        <p className="text-sm text-gray-500">Adjust grade boundaries and points for the current term.</p>
-                      </div>
-                      <Button onClick={addGrade} size="sm" className="gap-2">
-                        <Plus className="w-4 h-4" />
-                        Add Grade
-                      </Button>
+                    <div className="p-8 border-b border-gray-100">
+                      <h3 className="text-xl font-bold text-kenya-black">Grading System Configuration</h3>
+                      <p className="text-sm text-gray-500">Adjust grade boundaries and points for the current term.</p>
                     </div>
                     <table className="w-full text-left">
                       <thead>
@@ -1424,20 +1359,12 @@ export const PrincipalDashboard = () => {
                           <th className="px-6 py-4">Min Score</th>
                           <th className="px-6 py-4">Max Score</th>
                           <th className="px-6 py-4">Points</th>
-                          <th className="px-6 py-4">Actions</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {gradingSystem.map((g, idx) => (
-                          <tr key={idx}>
-                            <td className="px-6 py-4">
-                              <input 
-                                type="text" 
-                                value={g.grade}
-                                onChange={(e) => updateGradeBoundary(idx, 'grade', e.target.value)}
-                                className="w-20 px-2 py-1 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-black text-kenya-black"
-                              />
-                            </td>
+                          <tr key={g.grade}>
+                            <td className="px-6 py-4 font-black text-kenya-black">{g.grade}</td>
                             <td className="px-6 py-4">
                               <input 
                                 type="number" 
@@ -1461,14 +1388,6 @@ export const PrincipalDashboard = () => {
                                 onChange={(e) => updateGradeBoundary(idx, 'points', parseInt(e.target.value))}
                                 className="w-20 px-2 py-1 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
                               />
-                            </td>
-                            <td className="px-6 py-4">
-                              <button 
-                                onClick={() => removeGrade(idx)}
-                                className="p-2 text-gray-400 hover:text-kenya-red transition-colors"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
                             </td>
                           </tr>
                         ))}
@@ -1695,21 +1614,13 @@ export const PrincipalDashboard = () => {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                   <div className="flex items-center justify-end gap-2">
-                                    {exam.status === 'Active' ? (
+                                    {exam.status === 'Active' && (
                                       <button 
                                         onClick={() => processExam(exam.id)}
                                         className="p-2 text-kenya-green hover:bg-kenya-green/10 rounded-lg transition-colors"
                                         title="Process & Lock Marks"
                                       >
                                         <CheckCircle2 className="w-4 h-4" />
-                                      </button>
-                                    ) : (
-                                      <button 
-                                        onClick={() => recallExam(exam.id)}
-                                        className="p-2 text-orange-500 hover:bg-orange-50 rounded-lg transition-colors"
-                                        title="Recall Exam (Allow Editing)"
-                                      >
-                                        <ArrowUpDown className="w-4 h-4" />
                                       </button>
                                     )}
                                     <button 
@@ -1734,41 +1645,21 @@ export const PrincipalDashboard = () => {
                       <h3 className="text-xl font-bold text-kenya-black mb-8">Generate Student Report Card</h3>
                       
                       <div className="space-y-8">
-                        {/* Step 1: Select Student or Class */}
+                        {/* Step 1: Select Student */}
                         <div className="space-y-4">
-                          <label className="text-sm font-black text-kenya-black uppercase tracking-wider">1. Select Learner or Class</label>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="relative">
-                              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                              <select 
-                                value={reportConfig.selectedStudentId}
-                                onChange={(e) => setReportConfig({...reportConfig, selectedStudentId: e.target.value})}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 appearance-none"
-                              >
-                                <option value="">Choose a student...</option>
-                                {students.map(s => (
-                                  <option key={s.id} value={s.id}>{s.name} ({s.adm}) - {s.class}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div className="relative">
-                              <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                              <select 
-                                onChange={(e) => {
-                                  // In a real app, this would trigger a batch generation process
-                                  if (e.target.value) {
-                                    alert(`Class report generation for ${e.target.value} initiated. This will generate a combined PDF for all students in the class.`);
-                                    e.target.value = '';
-                                  }
-                                }}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 appearance-none"
-                              >
-                                <option value="">Or generate for entire class...</option>
-                                {classes.map(c => (
-                                  <option key={c.id} value={c.name}>{c.name}</option>
-                                ))}
-                              </select>
-                            </div>
+                          <label className="text-sm font-black text-kenya-black uppercase tracking-wider">1. Select Learner</label>
+                          <div className="relative">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                            <select 
+                              value={reportConfig.selectedStudentId}
+                              onChange={(e) => setReportConfig({...reportConfig, selectedStudentId: e.target.value})}
+                              className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 appearance-none"
+                            >
+                              <option value="">Choose a student...</option>
+                              {students.map(s => (
+                                <option key={s.id} value={s.id}>{s.name} ({s.adm}) - {s.class}</option>
+                              ))}
+                            </select>
                           </div>
                         </div>
 
@@ -1893,7 +1784,7 @@ export const PrincipalDashboard = () => {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                   {/* Left Column: School Info Form */}
                   <div className="lg:col-span-2 space-y-8">
-                    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                    <form onSubmit={handleUpdateSchool} className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
                       <div className="p-8 border-b border-gray-100 bg-gray-50/50">
                         <h3 className="text-xl font-bold text-kenya-black flex items-center gap-2">
                           <Building2 className="w-5 h-5 text-kenya-green" />
@@ -1976,8 +1867,14 @@ export const PrincipalDashboard = () => {
                             />
                           </div>
                         </div>
+
+                        <div className="pt-6 border-t border-gray-100">
+                          <Button type="submit" className="w-full py-4 rounded-xl font-black text-lg shadow-xl shadow-kenya-green/20">
+                            Save School Information
+                          </Button>
+                        </div>
                       </div>
-                    </div>
+                    </form>
 
                     <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
                       <div className="p-8 border-b border-gray-100 bg-gray-50/50">
@@ -1987,14 +1884,11 @@ export const PrincipalDashboard = () => {
                         </h3>
                       </div>
                       <div className="p-8 space-y-8">
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-3 gap-4">
                           {[
                             { id: 'standard', name: 'Standard', desc: 'Classic centered layout' },
                             { id: 'modern', name: 'Modern', desc: 'Clean left-aligned style' },
-                            { id: 'minimal', name: 'Minimal', desc: 'Sleek professional look' },
-                            { id: 'elegant', name: 'Elegant', desc: 'Sophisticated serif design' },
-                            { id: 'bold', name: 'Bold', desc: 'Strong header presence' },
-                            { id: 'compact', name: 'Compact', desc: 'Space-saving layout' }
+                            { id: 'minimal', name: 'Minimal', desc: 'Sleek professional look' }
                           ].map(template => (
                             <button
                               key={template.id}
@@ -2047,10 +1941,30 @@ export const PrincipalDashboard = () => {
                       <p className="text-xs text-gray-500 px-4">Recommended: Square PNG with transparent background (min 500x500px)</p>
                     </div>
 
-                    <div className="pt-6">
-                      <Button onClick={handleUpdateSchool} className="w-full py-4 rounded-xl font-black text-lg shadow-xl shadow-kenya-green/20">
-                        Save Configuration
-                      </Button>
+                    <div className="bg-kenya-black rounded-3xl p-8 text-white shadow-xl">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="bg-kenya-green p-2 rounded-xl">
+                          <ShieldCheck className="w-5 h-5" />
+                        </div>
+                        <h4 className="font-bold">System Status</h4>
+                      </div>
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-gray-400">Account Type</span>
+                          <span className="font-bold text-kenya-green">Premium Institutional</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-gray-400">Storage Used</span>
+                          <span className="font-bold">12.4 GB / 50 GB</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-gray-400">Last Backup</span>
+                          <span className="font-bold">Today, 02:15 AM</span>
+                        </div>
+                      </div>
+                      <button className="w-full mt-8 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-sm font-bold transition-all">
+                        Download System Logs
+                      </button>
                     </div>
                   </div>
                 </div>
