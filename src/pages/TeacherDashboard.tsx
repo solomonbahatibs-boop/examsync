@@ -107,6 +107,15 @@ export const TeacherDashboard = () => {
     showRank: true
   });
 
+  const [assessmentCategories] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_assessment_categories');
+    return saved ? JSON.parse(saved) : [
+      { id: 'cat1', name: 'CAT 1', maxScore: 20 },
+      { id: 'cat2', name: 'CAT 2', maxScore: 20 },
+      { id: 'final', name: 'Final Exam', maxScore: 60 },
+    ];
+  });
+
   const [learningAreas] = useState<string[]>(() => {
     const saved = localStorage.getItem('alakara_learning_areas');
     return saved ? JSON.parse(saved) : ['Mathematics', 'English', 'Kiswahili', 'Science', 'Social Studies', 'CRE'];
@@ -185,6 +194,20 @@ export const TeacherDashboard = () => {
     }
   };
 
+  const addLog = (action: string, details: string) => {
+    const saved = localStorage.getItem('alakara_audit_trail');
+    const logs = saved ? JSON.parse(saved) : [];
+    const newLog = {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      user: currentTeacher.name,
+      action,
+      details
+    };
+    const updatedLogs = [newLog, ...logs].slice(0, 100);
+    localStorage.setItem('alakara_audit_trail', JSON.stringify(updatedLogs));
+  };
+
   const handleLogout = () => {
     navigate('/teacher-login');
   };
@@ -195,29 +218,66 @@ export const TeacherDashboard = () => {
     const examMarks = marks.filter(m => m.examId === exam.id);
     const marksMap: any = {};
     examMarks.forEach(m => {
-      marksMap[m.studentId] = m.score;
+      marksMap[m.studentId] = m.assessments || {};
     });
     setCurrentMarks(marksMap);
   };
 
-  const handleMarkChange = (studentId: string, score: string) => {
-    if (activeExam.status !== 'Active') return;
-    setCurrentMarks({ ...currentMarks, [studentId]: score });
+  const handleMarkChange = (studentId: string, categoryId: string, score: string) => {
+    if (activeExam.status !== 'Active' || activeExam.locked) return;
+    
+    const category = assessmentCategories.find(c => c.id === categoryId);
+    const numScore = parseFloat(score);
+    
+    if (score !== '' && (isNaN(numScore) || numScore < 0 || (category && numScore > category.maxScore))) {
+      return; // Invalid input
+    }
+
+    const updatedStudentMarks = { 
+      ...(currentMarks[studentId] || {}), 
+      [categoryId]: score 
+    };
+    
+    setCurrentMarks({ ...currentMarks, [studentId]: updatedStudentMarks });
+    
+    // Auto-save logic could go here, but for now we'll rely on the manual save or a debounced effect
   };
 
   const saveMarks = () => {
-    const newMarks = [...marks.filter(m => m.examId !== activeExam.id)];
-    Object.entries(currentMarks).forEach(([studentId, score]) => {
+    if (activeExam.locked) {
+      alert('This exam is locked and cannot be edited.');
+      return;
+    }
+
+    const newMarks = [...marks.filter(m => m.examId !== activeExam.id || m.subject !== 'Mathematics')]; // Assuming primary subject for now
+    
+    Object.entries(currentMarks).forEach(([studentId, assessments]: [string, any]) => {
+      let total = 0;
+      Object.values(assessments).forEach(val => {
+        if (val) total += parseFloat(val as string);
+      });
+
+      const percentage = total; // Since total max is 100 in default config
+
+      // Find grade
+      const gradeObj = gradingSystem.find(g => percentage >= g.min && percentage <= g.max);
+      const grade = gradeObj ? gradeObj.grade : 'E';
+
       newMarks.push({
-        id: `${activeExam.id}-${studentId}`,
+        id: `${activeExam.id}-${studentId}-Mathematics`,
         examId: activeExam.id,
         studentId,
-        score,
-        subject: 'Mathematics', // Mock subject for demo
+        subject: 'Mathematics',
+        assessments,
+        total,
+        percentage,
+        grade,
         updatedAt: new Date().toISOString()
       });
     });
+
     setMarks(newMarks);
+    addLog('Save Marks', `Updated marks for ${activeExam.title}`);
     alert('Marks saved successfully!');
     
     addNotification({
@@ -615,44 +675,63 @@ export const TeacherDashboard = () => {
                         <tr className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
                           <th className="px-8 py-4">Admission No</th>
                           <th className="px-8 py-4">Student Name</th>
-                          <th className="px-8 py-4 w-48">Score (0-100)</th>
+                          {assessmentCategories.map(cat => (
+                            <th key={cat.id} className="px-4 py-4 text-center w-32">
+                              {cat.name}
+                              <span className="block text-[8px] opacity-60">Max: {cat.maxScore}</span>
+                            </th>
+                          ))}
+                          <th className="px-8 py-4 text-center">Total</th>
                           <th className="px-8 py-4">Status</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
                         {allStudents
                           .filter(s => activeExam.classes.includes(s.class) && assignedClasses.includes(s.class))
-                          .map((student) => (
-                            <tr key={student.id} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-8 py-6 font-mono text-sm text-gray-500">{student.adm}</td>
-                            <td className="px-8 py-6 font-bold text-kenya-black">{student.name}</td>
-                            <td className="px-8 py-6">
-                              <input 
-                                type="number"
-                                min="0"
-                                max="100"
-                                value={currentMarks[student.id] || ''}
-                                onChange={(e) => handleMarkChange(student.id, e.target.value)}
-                                disabled={activeExam.status !== 'Active'}
-                                className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-lg disabled:opacity-50"
-                                placeholder="--"
-                              />
-                            </td>
-                            <td className="px-8 py-6">
-                              {currentMarks[student.id] ? (
-                                <span className="text-kenya-green flex items-center gap-1 text-xs font-bold uppercase">
-                                  <CheckCircle2 className="w-4 h-4" />
-                                  Entered
-                                </span>
-                              ) : (
-                                <span className="text-gray-300 flex items-center gap-1 text-xs font-bold uppercase">
-                                  <Clock className="w-4 h-4" />
-                                  Pending
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
+                          .map((student) => {
+                            const studentAssessments = currentMarks[student.id] || {};
+                            let rowTotal = 0;
+                            Object.values(studentAssessments).forEach(val => {
+                              if (val) rowTotal += parseFloat(val as string);
+                            });
+
+                            return (
+                              <tr key={student.id} className="hover:bg-gray-50/50 transition-colors">
+                                <td className="px-8 py-6 font-mono text-sm text-gray-500">{student.adm}</td>
+                                <td className="px-8 py-6 font-bold text-kenya-black">{student.name}</td>
+                                {assessmentCategories.map(cat => (
+                                  <td key={cat.id} className="px-4 py-6">
+                                    <input 
+                                      type="number"
+                                      min="0"
+                                      max={cat.maxScore}
+                                      value={studentAssessments[cat.id] || ''}
+                                      onChange={(e) => handleMarkChange(student.id, cat.id, e.target.value)}
+                                      disabled={activeExam.status !== 'Active' || activeExam.locked}
+                                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-center disabled:opacity-50"
+                                      placeholder="--"
+                                    />
+                                  </td>
+                                ))}
+                                <td className="px-8 py-6 text-center">
+                                  <span className="text-lg font-black text-kenya-black">{rowTotal}</span>
+                                </td>
+                                <td className="px-8 py-6">
+                                  {Object.keys(studentAssessments).length === assessmentCategories.length ? (
+                                    <span className="text-kenya-green flex items-center gap-1 text-xs font-bold uppercase">
+                                      <CheckCircle2 className="w-4 h-4" />
+                                      Complete
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-300 flex items-center gap-1 text-xs font-bold uppercase">
+                                      <Clock className="w-4 h-4" />
+                                      Partial
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                       </tbody>
                     </table>
                   </div>

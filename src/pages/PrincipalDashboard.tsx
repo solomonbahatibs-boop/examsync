@@ -55,7 +55,10 @@ import {
   ResponsiveContainer,
   LineChart,
   Line,
-  Legend
+  Legend,
+  PieChart,
+  Pie,
+  Cell
 } from 'recharts';
 import * as XLSX from 'xlsx';
 
@@ -65,7 +68,7 @@ export const PrincipalDashboard = () => {
   const [isSuspended, setIsSuspended] = useState(false);
   const [daysToExpiry, setDaysToExpiry] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'staff' | 'students' | 'academic' | 'settings' | 'classes'>('dashboard');
-  const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports' | 'results-processing'>('overview');
+  const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports' | 'results-processing' | 'academic-settings'>('overview');
   const [topXCount, setTopXCount] = useState(10);
   const [selectedProcessingClass, setSelectedProcessingClass] = useState('All');
   const [selectedAnalysisClass, setSelectedAnalysisClass] = useState('All');
@@ -251,6 +254,7 @@ export const PrincipalDashboard = () => {
     includeAverages: true,
     includeGrades: true,
     graphType: 'bar' as 'bar' | 'line',
+    templateType: 'classic' as 'classic' | 'modern' | 'graph' | 'primary' | 'compact',
     includeLetterhead: true,
     includePerformanceTrend: true
   });
@@ -260,6 +264,33 @@ export const PrincipalDashboard = () => {
     showGrades: true,
     showRank: true
   });
+
+  const [assessmentCategories, setAssessmentCategories] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_assessment_categories');
+    return saved ? JSON.parse(saved) : [
+      { id: 'cat1', name: 'CAT 1', maxScore: 20 },
+      { id: 'cat2', name: 'CAT 2', maxScore: 20 },
+      { id: 'final', name: 'Final Exam', maxScore: 60 },
+    ];
+  });
+
+  const [rankingLogic, setRankingLogic] = useState<any>(() => {
+    const saved = localStorage.getItem('alakara_ranking_logic');
+    return saved ? JSON.parse(saved) : {
+      primaryCriteria: 'aggregate_total',
+      tieBreaker1: 'distinctions_count',
+      tieBreaker2: 'core_subjects_total',
+      coreSubjects: ['Mathematics', 'English', 'Kiswahili']
+    };
+  });
+
+  useEffect(() => {
+    localStorage.setItem('alakara_assessment_categories', JSON.stringify(assessmentCategories));
+  }, [assessmentCategories]);
+
+  useEffect(() => {
+    localStorage.setItem('alakara_ranking_logic', JSON.stringify(rankingLogic));
+  }, [rankingLogic]);
 
   const [schoolSettings, setSchoolSettings] = useState({
     name: '',
@@ -572,6 +603,49 @@ export const PrincipalDashboard = () => {
     XLSX.writeFile(wb, "Student_Bulk_Upload_Template.xlsx");
   };
 
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+
+  // Auto-save drafts
+  useEffect(() => {
+    const draft = {
+      newExam,
+      newStaff,
+      schoolSettings,
+      newClass,
+      newStudent
+    };
+    localStorage.setItem('alakara_config_draft', JSON.stringify(draft));
+    setHasUnsavedChanges(true);
+  }, [newExam, newStaff, schoolSettings, newClass, newStudent]);
+
+  // Load drafts on mount
+  useEffect(() => {
+    const savedDraft = localStorage.getItem('alakara_config_draft');
+    if (savedDraft) {
+      const draft = JSON.parse(savedDraft);
+      // Only set if they are not empty to avoid overwriting initial state with empty drafts
+      if (draft.newExam.title) setNewExam(draft.newExam);
+      if (draft.newStaff.name) setNewStaff(draft.newStaff);
+      if (draft.schoolSettings.name) setSchoolSettings(draft.schoolSettings);
+      if (draft.newClass.name) setNewClass(draft.newClass);
+      if (draft.newStudent.name) setNewStudent(draft.newStudent);
+    }
+    // Reset unsaved changes after initial load
+    setTimeout(() => setHasUnsavedChanges(false), 1000);
+  }, []);
+
+  // Prevent accidental reload
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   const handleCreateExam = (e: FormEvent) => {
     e.preventDefault();
     const exam = {
@@ -587,10 +661,29 @@ export const PrincipalDashboard = () => {
     alert('Exam created successfully! It is now visible to teachers.');
   };
 
+  const [logs, setLogs] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_audit_trail');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const addLog = (action: string, details: string) => {
+    const newLog = {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      user: 'Principal',
+      action,
+      details
+    };
+    const updatedLogs = [newLog, ...logs].slice(0, 100);
+    setLogs(updatedLogs);
+    localStorage.setItem('alakara_audit_trail', JSON.stringify(updatedLogs));
+  };
+
   const processExam = (id: string) => {
     if (window.confirm('Are you sure you want to process this exam? This will lock mark entry for teachers.')) {
       const exam = exams.find(e => e.id === id);
       setExams(exams.map(e => e.id === id ? { ...e, status: 'Completed' } : e));
+      addLog('Process Exam', `Processed results for ${exam?.title}`);
       
       addNotification({
         title: 'Exam Results Published',
@@ -673,6 +766,51 @@ export const PrincipalDashboard = () => {
     { subject: 'Social', average: 75, top: 95, bottom: 50 },
     { subject: 'CRE', average: 82, top: 99, bottom: 60 },
   ];
+
+  const getAnalyticsData = () => {
+    // 1. Class Performance Comparison
+    const classPerformance = classes.map(c => {
+      const classStudents = students.filter(s => s.class === c.name);
+      const classMarks = marks.filter(m => classStudents.some(s => s.id === m.studentId));
+      const totalScore = classMarks.reduce((sum, m) => sum + (m.total || 0), 0);
+      const count = classMarks.length;
+      return {
+        name: c.name,
+        average: count > 0 ? totalScore / count : 0,
+        studentCount: classStudents.length
+      };
+    }).sort((a, b) => b.average - a.average);
+
+    // 2. Subject Pass Rates
+    const subjectStats = learningAreas.map(subject => {
+      const subjectMarks = marks.filter(m => m.subject === subject);
+      const passCount = subjectMarks.filter(m => (m.total || 0) >= 50).length;
+      const failCount = subjectMarks.filter(m => (m.total || 0) < 50).length;
+      const total = subjectMarks.length;
+      return {
+        subject,
+        passRate: total > 0 ? (passCount / total) * 100 : 0,
+        failRate: total > 0 ? (failCount / total) * 100 : 0,
+        average: total > 0 ? subjectMarks.reduce((sum, m) => sum + (m.total || 0), 0) / total : 0
+      };
+    });
+
+    // 3. Gender Performance
+    const genderStats = ['Male', 'Female'].map(gender => {
+      const genderStudents = students.filter(s => s.gender === gender);
+      const genderMarks = marks.filter(m => genderStudents.some(s => s.id === m.studentId));
+      const total = genderMarks.reduce((sum, m) => sum + (m.total || 0), 0);
+      const count = genderMarks.length;
+      return {
+        gender,
+        average: count > 0 ? total / count : 0
+      };
+    });
+
+    return { classPerformance, subjectStats, genderStats };
+  };
+
+  const { classPerformance, subjectStats, genderStats } = getAnalyticsData();
 
   const handleGenerateReport = () => {
     if (!reportConfig.selectedStudentId) {
@@ -767,22 +905,23 @@ export const PrincipalDashboard = () => {
 
   const getSubjectChampions = () => {
     if (!selectedProcessingExamId) return [];
-    
-    const examMarks = marks.filter(m => m.examId === selectedProcessingExamId);
-    
+    const exam = exams.find(e => e.id === selectedProcessingExamId);
+    if (!exam) return [];
+
     return learningAreas.map(subject => {
-      const subjectMarks = examMarks.filter(m => m.subject === subject);
-      const sorted = subjectMarks
-        .map(m => {
-          const student = students.find(s => s.id === m.studentId);
-          return { ...m, studentName: student?.name, studentAdm: student?.adm, studentClass: student?.class };
-        })
-        .filter(m => selectedProcessingClass === 'All' || m.studentClass === selectedProcessingClass)
-        .sort((a, b) => parseFloat(b.score) - parseFloat(a.score));
-        
+      const subjectMarks = marks.filter(m => 
+        m.examId === selectedProcessingExamId && 
+        m.subject === subject &&
+        (selectedProcessingClass === 'All' || students.find(s => s.id === m.studentId)?.class === selectedProcessingClass)
+      );
+      
+      const sorted = subjectMarks.sort((a, b) => parseFloat(b.total || b.score) - parseFloat(a.total || a.score));
+      const championMark = sorted[0];
+      const champion = championMark ? students.find(s => s.id === championMark.studentId) : null;
+      
       return {
         subject,
-        champion: sorted[0] || null
+        champion: champion ? { ...champion, score: championMark.total || championMark.score } : null
       };
     });
   };
@@ -790,33 +929,116 @@ export const PrincipalDashboard = () => {
   const getTopStudents = () => {
     if (!selectedProcessingExamId) return [];
     
-    const examMarks = marks.filter(m => m.examId === selectedProcessingExamId);
     const exam = exams.find(e => e.id === selectedProcessingExamId);
     if (!exam) return [];
 
-    const studentAnalysis = students
-      .filter(s => exam.classes.includes(s.class) && (selectedProcessingClass === 'All' || s.class === selectedProcessingClass))
-      .map(student => {
-        const studentMarks = examMarks.filter(m => m.studentId === student.id);
-        let totalScore = 0;
-        let subjectsCount = 0;
+    const classStudents = students.filter(s => 
+      (selectedProcessingClass === 'All' ? exam.classes.includes(s.class) : s.class === selectedProcessingClass)
+    );
+    
+    const processed = classStudents.map(student => {
+      const studentMarks = marks.filter(m => m.examId === selectedProcessingExamId && m.studentId === student.id);
+      
+      const aggregateTotal = studentMarks.reduce((acc, m) => acc + parseFloat(m.total || m.score || 0), 0);
+      const average = studentMarks.length > 0 ? aggregateTotal / studentMarks.length : 0;
+      
+      // Find overall grade
+      const gradeObj = gradingSystem.find(g => average >= g.min && average <= g.max);
+      const grade = gradeObj ? gradeObj.grade : 'E';
 
-        learningAreas.forEach(la => {
-          const mark = studentMarks.find(m => m.subject === la);
-          const score = mark ? parseFloat(mark.score) : null;
-          if (score !== null) {
-            totalScore += score;
-            subjectsCount++;
-          }
-        });
+      // Count distinctions (A and A-)
+      const distinctionsCount = studentMarks.filter(m => {
+        const score = parseFloat(m.total || m.score);
+        const g = gradingSystem.find(gs => score >= gs.min && score <= gs.max);
+        return g && (g.grade === 'A' || g.grade === 'A-');
+      }).length;
 
-        const average = subjectsCount > 0 ? totalScore / subjectsCount : 0;
-        return { ...student, totalScore, average };
-      })
-      .sort((a, b) => b.totalScore - a.totalScore)
-      .slice(0, topXCount);
+      // Core subjects total
+      const coreSubjectsTotal = studentMarks
+        .filter(m => rankingLogic.coreSubjects.includes(m.subject))
+        .reduce((acc, m) => acc + parseFloat(m.total || m.score || 0), 0);
 
-    return studentAnalysis;
+      return {
+        ...student,
+        aggregateTotal,
+        average,
+        grade,
+        distinctionsCount,
+        coreSubjectsTotal
+      };
+    });
+
+    // Ranking Logic
+    const ranked = processed.sort((a, b) => {
+      if (b.aggregateTotal !== a.aggregateTotal) return b.aggregateTotal - a.aggregateTotal;
+      if (b.distinctionsCount !== a.distinctionsCount) return b.distinctionsCount - a.distinctionsCount;
+      return b.coreSubjectsTotal - a.coreSubjectsTotal;
+    });
+
+    // Assign positions
+    let currentPos = 1;
+    const positioned = ranked.map((item, idx, arr) => {
+      if (idx > 0) {
+        const prev = arr[idx - 1];
+        const isTie = item.aggregateTotal === prev.aggregateTotal && 
+                     item.distinctionsCount === prev.distinctionsCount && 
+                     item.coreSubjectsTotal === prev.coreSubjectsTotal;
+        if (!isTie) {
+          currentPos = idx + 1;
+        }
+      }
+      return { ...item, position: currentPos };
+    });
+
+    return positioned.slice(0, topXCount);
+  };
+
+  const getMostImproved = (limit: number) => {
+    if (exams.length < 2) return [];
+    const currentExam = exams[exams.length - 1];
+    const prevExam = exams[exams.length - 2];
+    
+    return students.map(student => {
+      const currentMarks = marks.filter(m => m.examId === currentExam.id && m.studentId === student.id);
+      const prevMarks = marks.filter(m => m.examId === prevExam.id && m.studentId === student.id);
+      
+      const currentTotal = currentMarks.reduce((acc, m) => acc + parseFloat(m.total || m.score || 0), 0);
+      const prevTotal = prevMarks.reduce((acc, m) => acc + parseFloat(m.total || m.score || 0), 0);
+      
+      return {
+        ...student,
+        improvement: currentTotal - prevTotal,
+        currentTotal,
+        prevTotal
+      };
+    })
+    .filter(s => s.improvement > 0)
+    .sort((a, b) => b.improvement - a.improvement)
+    .slice(0, limit);
+  };
+
+  const getMostDropped = (limit: number) => {
+    if (exams.length < 2) return [];
+    const currentExam = exams[exams.length - 1];
+    const prevExam = exams[exams.length - 2];
+    
+    return students.map(student => {
+      const currentMarks = marks.filter(m => m.examId === currentExam.id && m.studentId === student.id);
+      const prevMarks = marks.filter(m => m.examId === prevExam.id && m.studentId === student.id);
+      
+      const currentTotal = currentMarks.reduce((acc, m) => acc + parseFloat(m.total || m.score || 0), 0);
+      const prevTotal = prevMarks.reduce((acc, m) => acc + parseFloat(m.total || m.score || 0), 0);
+      
+      return {
+        ...student,
+        drop: prevTotal - currentTotal,
+        currentTotal,
+        prevTotal
+      };
+    })
+    .filter(s => s.drop > 0)
+    .sort((a, b) => b.drop - a.drop)
+    .slice(0, limit);
   };
 
   const analysisData = getAnalysisData();
@@ -1109,32 +1331,62 @@ export const PrincipalDashboard = () => {
                 </div>
 
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
-                  <h3 className="text-xl font-bold text-kenya-black mb-6">School Performance Overview</h3>
+                  <h3 className="text-xl font-bold text-kenya-black mb-6">Class Performance Comparison</h3>
                   <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={[
-                        { month: 'Jan', score: 65 },
-                        { month: 'Feb', score: 68 },
-                        { month: 'Mar', score: 75 },
-                        { month: 'Apr', score: 72 },
-                        { month: 'May', score: 80 },
-                        { month: 'Jun', score: 85 },
-                      ]}>
-                        <defs>
-                          <linearGradient id="colorScore" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#006633" stopOpacity={0.1}/>
-                            <stop offset="95%" stopColor="#006633" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
+                      <BarChart data={classPerformance}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
+                        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
                         <YAxis axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 12}} />
                         <Tooltip 
                           contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
                         />
-                        <Area type="monotone" dataKey="score" stroke="#006633" strokeWidth={3} fillOpacity={1} fill="url(#colorScore)" />
-                      </AreaChart>
+                        <Bar dataKey="average" fill="#006633" radius={[4, 4, 0, 0]} />
+                      </BarChart>
                     </ResponsiveContainer>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                    <h3 className="text-xl font-bold text-kenya-black mb-6">Subject Pass Rates (%)</h3>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={subjectStats} layout="vertical">
+                          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                          <XAxis type="number" domain={[0, 100]} axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 10}} />
+                          <YAxis dataKey="subject" type="category" axisLine={false} tickLine={false} tick={{fill: '#9ca3af', fontSize: 10}} width={80} />
+                          <Tooltip 
+                            contentStyle={{borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
+                          />
+                          <Bar dataKey="passRate" fill="#006633" radius={[0, 4, 4, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                    <h3 className="text-xl font-bold text-kenya-black mb-6">Gender Performance Comparison</h3>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={genderStats}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={80}
+                            paddingAngle={5}
+                            dataKey="average"
+                            nameKey="gender"
+                          >
+                            <Cell fill="#006633" />
+                            <Cell fill="#990000" />
+                          </Pie>
+                          <Tooltip />
+                          <Legend verticalAlign="bottom" height={36}/>
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
                 </div>
               </>
@@ -1455,6 +1707,7 @@ export const PrincipalDashboard = () => {
                       { id: 'analysis', title: 'Analyse Results', desc: 'Deep dive into student performance data.', icon: BarChart3, color: 'text-kenya-red', bg: 'bg-kenya-red/10' },
                       { id: 'results-processing', title: 'Results Processing', desc: 'Subject champions and top performers.', icon: Trophy, color: 'text-yellow-600', bg: 'bg-yellow-50' },
                       { id: 'reports', title: 'Generate Report Cards', desc: 'Produce and distribute student reports.', icon: FileSpreadsheet, color: 'text-purple-600', bg: 'bg-purple-50' },
+                      { id: 'academic-settings', title: 'Academic Settings', desc: 'Configure assessments and ranking logic.', icon: Settings, color: 'text-gray-600', bg: 'bg-gray-100' },
                     ].map((item) => (
                       <button
                         key={item.id}
@@ -1647,6 +1900,108 @@ export const PrincipalDashboard = () => {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                ) : academicSubTab === 'academic-settings' ? (
+                  <div className="space-y-8">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      {/* Assessment Categories */}
+                      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8">
+                        <div className="flex items-center justify-between mb-6">
+                          <h3 className="text-xl font-bold text-kenya-black">Assessment Categories</h3>
+                          <Button variant="ghost" size="sm" onClick={() => {
+                            const name = prompt('Enter category name (e.g. CAT 1):');
+                            const max = prompt('Enter maximum score:');
+                            if (name && max) {
+                              setAssessmentCategories([...assessmentCategories, { id: name.toLowerCase().replace(/\s+/g, '-'), name, maxScore: parseInt(max) }]);
+                            }
+                          }}>
+                            <Plus className="w-4 h-4 mr-2" /> Add Category
+                          </Button>
+                        </div>
+                        <div className="space-y-4">
+                          {assessmentCategories.map((cat, idx) => (
+                            <div key={cat.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                              <div>
+                                <p className="font-bold text-kenya-black">{cat.name}</p>
+                                <p className="text-xs text-gray-500">Max Score: {cat.maxScore}</p>
+                              </div>
+                              <button 
+                                onClick={() => setAssessmentCategories(assessmentCategories.filter((_, i) => i !== idx))}
+                                className="p-2 text-gray-400 hover:text-kenya-red transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Ranking Logic */}
+                      <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8">
+                        <h3 className="text-xl font-bold text-kenya-black mb-6">Ranking Logic Configuration</h3>
+                        <div className="space-y-6">
+                          <div className="space-y-2">
+                            <label className="text-sm font-bold text-gray-500 uppercase">Primary Ranking Criteria</label>
+                            <select 
+                              value={rankingLogic.primaryCriteria}
+                              onChange={(e) => setRankingLogic({...rankingLogic, primaryCriteria: e.target.value})}
+                              className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none"
+                            >
+                              <option value="aggregate_total">Aggregate Total Marks</option>
+                              <option value="average_score">Overall Average Score</option>
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-sm font-bold text-gray-500 uppercase">Core Subjects (Tie-Breakers)</label>
+                            <div className="grid grid-cols-2 gap-2">
+                              {learningAreas.map(la => (
+                                <label key={la} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-100 cursor-pointer">
+                                  <input 
+                                    type="checkbox"
+                                    checked={rankingLogic.coreSubjects.includes(la)}
+                                    onChange={(e) => {
+                                      const subjects = e.target.checked 
+                                        ? [...rankingLogic.coreSubjects, la]
+                                        : rankingLogic.coreSubjects.filter((s: string) => s !== la);
+                                      setRankingLogic({...rankingLogic, coreSubjects: subjects});
+                                    }}
+                                    className="w-4 h-4 rounded border-gray-300 text-kenya-green"
+                                  />
+                                  <span className="text-xs font-medium text-gray-600">{la}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Exam Locking Control */}
+                    <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-8">
+                      <h3 className="text-xl font-bold text-kenya-black mb-6">Result Locking Control</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {exams.map(exam => (
+                          <div key={exam.id} className="p-6 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+                            <div>
+                              <p className="font-bold text-kenya-black">{exam.title}</p>
+                              <p className="text-xs text-gray-500">{exam.term} {exam.year}</p>
+                            </div>
+                            <Button 
+                              variant={exam.locked ? 'secondary' : 'default'}
+                              size="sm"
+                              onClick={() => {
+                                const newExams = exams.map(e => e.id === exam.id ? {...e, locked: !e.locked} : e);
+                                setExams(newExams);
+                              }}
+                              className="gap-2"
+                            >
+                              {exam.locked ? <ShieldAlert className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                              {exam.locked ? 'Unlock' : 'Lock'}
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 ) : academicSubTab === 'analysis' ? (
                   <div className="space-y-8">
@@ -2046,6 +2401,68 @@ export const PrincipalDashboard = () => {
                               </table>
                             </div>
                           </div>
+
+                          {/* Most Improved */}
+                          <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-black text-kenya-black uppercase tracking-widest text-sm">Most Improved</h4>
+                              <span className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Top positive growth</span>
+                            </div>
+                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                              <table className="w-full text-left">
+                                <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                                  <tr>
+                                    <th className="px-4 py-3">Student</th>
+                                    <th className="px-4 py-3 text-center">Growth</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {getMostImproved(5).map((student, idx) => (
+                                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                                      <td className="px-4 py-3">
+                                        <p className="font-bold text-kenya-black text-xs">{student.name}</p>
+                                        <p className="text-[10px] text-gray-500">{student.adm}</p>
+                                      </td>
+                                      <td className="px-4 py-3 text-center">
+                                        <span className="font-black text-blue-600">+{student.improvement.toFixed(1)}</span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+
+                          {/* Most Dropped */}
+                          <div className="space-y-6">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-black text-kenya-black uppercase tracking-widest text-sm">Most Dropped</h4>
+                              <span className="text-[10px] font-bold text-kenya-red uppercase tracking-wider">Highest performance drop</span>
+                            </div>
+                            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                              <table className="w-full text-left">
+                                <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-wider">
+                                  <tr>
+                                    <th className="px-4 py-3">Student</th>
+                                    <th className="px-4 py-3 text-center">Drop</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-gray-100">
+                                  {getMostDropped(5).map((student, idx) => (
+                                    <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                                      <td className="px-4 py-3">
+                                        <p className="font-bold text-kenya-black text-xs">{student.name}</p>
+                                        <p className="text-[10px] text-gray-500">{student.adm}</p>
+                                      </td>
+                                      <td className="px-4 py-3 text-center">
+                                        <span className="font-black text-kenya-red">-{student.drop.toFixed(1)}</span>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2161,6 +2578,26 @@ export const PrincipalDashboard = () => {
                                 />
                                 <span className="text-sm font-bold text-kenya-black">Track Performance Trend</span>
                               </label>
+                            </div>
+                            <div className="space-y-2 col-span-2">
+                              <label className="text-xs font-bold text-gray-500 uppercase">Report Card Template</label>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                {[
+                                  { id: 'classic', name: 'Classic' },
+                                  { id: 'modern', name: 'Modern' },
+                                  { id: 'graph', name: 'Graph-Based' },
+                                  { id: 'primary', name: 'Primary' },
+                                  { id: 'compact', name: 'Compact' },
+                                ].map(t => (
+                                  <button 
+                                    key={t.id}
+                                    onClick={() => setReportConfig({...reportConfig, templateType: t.id as any})}
+                                    className={`py-2 rounded-lg text-xs font-bold border transition-all ${reportConfig.templateType === t.id ? 'bg-kenya-black text-white border-kenya-black' : 'bg-white text-gray-500 border-gray-200'}`}
+                                  >
+                                    {t.name}
+                                  </button>
+                                ))}
+                              </div>
                             </div>
                             <div className="space-y-2">
                               <label className="text-xs font-bold text-gray-500 uppercase">Performance Graph Type</label>
