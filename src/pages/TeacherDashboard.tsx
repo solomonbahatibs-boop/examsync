@@ -60,9 +60,30 @@ export const TeacherDashboard = () => {
   });
   const [currentMarks, setCurrentMarks] = useState<any>({});
   const [activeTab, setActiveTab] = useState<'exams' | 'analysis' | 'class-management' | 'materials' | 'profile'>('exams');
+  const [materialsSubTab, setMaterialsSubTab] = useState<'public' | 'my-materials'>('my-materials');
   const [currentTeacher, setCurrentTeacher] = useState<any>(() => {
     const saved = localStorage.getItem('alakara_current_teacher');
-    return saved ? JSON.parse(saved) : { name: 'Teacher', role: 'Class Teacher', assignedClasses: ['Form 1', 'Grade 7'] };
+    if (saved) return JSON.parse(saved);
+    // Fallback for demo
+    return { 
+      id: '1',
+      name: 'John Kamau', 
+      role: 'Head of Science', 
+      assignments: [
+        { classId: '1', streamId: 's1', subject: 'Science' },
+        { classId: '5', streamId: '', subject: 'Science' }
+      ]
+    };
+  });
+
+  const [classes, setClasses] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_classes');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [streams, setStreams] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_streams');
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [examMaterials, setExamMaterials] = useState<any[]>(() => {
@@ -104,9 +125,7 @@ export const TeacherDashboard = () => {
     }
   };
 
-  const [assignedClasses] = useState<string[]>(currentTeacher.assignedClasses || ['Form 1', 'Grade 7']);
-  const [teacherRole] = useState<'Teacher' | 'Class Teacher'>(currentTeacher.role === 'Class Teacher' ? 'Class Teacher' : 'Teacher');
-  const [managedClass] = useState<string>(assignedClasses[0] || 'Form 1');
+  const [teacherRole] = useState<string>(currentTeacher.role || 'Teacher');
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState('');
   const [selectedAnalysisClass, setSelectedAnalysisClass] = useState('All');
   const [analysisOptions, setAnalysisOptions] = useState({
