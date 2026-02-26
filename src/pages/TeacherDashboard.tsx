@@ -24,7 +24,9 @@ import {
   Users,
   Plus,
   Trash2,
-  X
+  X,
+  Edit3,
+  Printer
 } from 'lucide-react';
 import { NotificationBell, addNotification } from '../components/NotificationBell';
 import { useNavigate } from 'react-router-dom';
@@ -42,6 +44,11 @@ import {
   Legend
 } from 'recharts';
 import * as XLSX from 'xlsx';
+
+import { supabaseService } from '../services/supabaseService';
+import { Database } from '../lib/database.types';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 export const TeacherDashboard = () => {
   const navigate = useNavigate();
@@ -173,6 +180,29 @@ export const TeacherDashboard = () => {
 
   const [newStudent, setNewStudent] = useState({ name: '', adm: '' });
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
+  const [showImportPreview, setShowImportPreview] = useState(false);
+  const [importPreviewData, setImportPreviewData] = useState<any[]>([]);
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(currentTeacher.avatar_url || null);
+  const [publicResources, setPublicResources] = useState<any[]>([]);
+  const [isLoadingResources, setIsLoadingResources] = useState(false);
+
+  useEffect(() => {
+    const fetchResources = async () => {
+      setIsLoadingResources(true);
+      try {
+        const resources = await supabaseService.getPublicResources();
+        setPublicResources(resources || []);
+      } catch (error) {
+        console.error('Error fetching resources:', error);
+      } finally {
+        setIsLoadingResources(false);
+      }
+    };
+    if (activeTab === 'materials') {
+      fetchResources();
+    }
+  }, [activeTab]);
 
   const handleAddStudent = (e: FormEvent) => {
     e.preventDefault();
@@ -289,7 +319,7 @@ export const TeacherDashboard = () => {
     });
   };
 
-  const handleBulkUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleCSVImport = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -301,72 +331,128 @@ export const TeacherDashboard = () => {
       const ws = wb.Sheets[wsname];
       const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
 
+      if (data.length < 2) {
+        alert('Invalid CSV file. No data found.');
+        return;
+      }
+
       const header = data[0];
-      const subjectIndices: { [key: string]: number } = {};
-      
-      header.forEach((cell, idx) => {
-        const la = String(cell).trim();
-        if (learningAreas.includes(la)) {
-          subjectIndices[la] = idx;
+      const admIdx = header.findIndex((h: any) => String(h).toLowerCase().includes('adm'));
+      const scoreIdx = header.findIndex((h: any) => String(h).toLowerCase().includes('score') || String(h).toLowerCase().includes('mark'));
+
+      if (admIdx === -1 || scoreIdx === -1) {
+        alert('CSV must have "Admission Number" and "Score" columns.');
+        return;
+      }
+
+      const preview: any[] = [];
+      const errors: string[] = [];
+
+      data.slice(1).forEach((row, idx) => {
+        const adm = String(row[admIdx]).trim();
+        const score = row[scoreIdx];
+        const student = allStudents.find(s => s.adm === adm);
+
+        if (!student) {
+          errors.push(`Row ${idx + 2}: Student with ADM ${adm} not found.`);
+        } else {
+          preview.push({
+            studentId: student.id,
+            name: student.name,
+            adm: student.adm,
+            score: score,
+            isValid: score !== undefined && !isNaN(parseFloat(score)) && parseFloat(score) >= 0 && parseFloat(score) <= 100
+          });
         }
       });
 
-      if (Object.keys(subjectIndices).length === 0) {
-        // Fallback to old format [Adm, Score]
-        const newMarksMap = { ...currentMarks };
-        data.forEach((row, index) => {
-          if (index === 0 && isNaN(Number(row[1]))) return;
-          const admNo = String(row[0]).trim();
-          const score = row[1];
-          const student = allStudents.find(s => s.adm === admNo);
-          if (student) {
-            newMarksMap[student.id] = String(score);
-          }
-        });
-        setCurrentMarks(newMarksMap);
-      } else {
-        // Multi-subject upload
-        const newMarks = [...marks];
-        data.slice(1).forEach((row) => {
-          const admNo = String(row[0]).trim();
-          const student = allStudents.find(s => s.adm === admNo);
-          if (student) {
-            Object.entries(subjectIndices).forEach(([subject, idx]) => {
-              const score = row[idx];
-              if (score !== undefined && score !== '') {
-                const markIdx = newMarks.findIndex(m => m.studentId === student.id && m.examId === activeExam.id && m.subject === subject);
-                const markData = {
-                  id: Math.random().toString(36).substr(2, 9),
-                  examId: activeExam.id,
-                  studentId: student.id,
-                  score: String(score),
-                  subject,
-                  updatedAt: new Date().toISOString()
-                };
-                if (markIdx > -1) newMarks[markIdx] = markData;
-                else newMarks.push(markData);
-              }
-            });
-          }
-        });
-        setMarks(newMarks);
-        
-        // Update currentMarks for the primary subject if it was in the file
-        const primarySubject = 'Mathematics'; 
-        const primaryIdx = subjectIndices[primarySubject];
-        if (primaryIdx !== undefined) {
-          const newMarksMap = { ...currentMarks };
-          data.slice(1).forEach(row => {
-            const admNo = String(row[0]).trim();
-            const student = allStudents.find(s => s.adm === admNo);
-            if (student) newMarksMap[student.id] = String(row[primaryIdx]);
-          });
-          setCurrentMarks(newMarksMap);
-        }
-      }
-      alert('Bulk marks imported successfully!');
+      setImportPreviewData(preview);
+      setImportErrors(errors);
+      setShowImportPreview(true);
     };
     reader.readAsBinaryString(file);
+  };
+
+  const confirmImport = () => {
+    const newMarksMap = { ...currentMarks };
+    importPreviewData.forEach(row => {
+      if (row.isValid) {
+        // Assuming primary subject for now
+        newMarksMap[row.studentId] = { ...newMarksMap[row.studentId], final: String(row.score) };
+      }
+    });
+    setCurrentMarks(newMarksMap);
+    setShowImportPreview(false);
+    alert('Marks imported to preview. Don\'t forget to click "Save All Marks" to persist changes.');
+  };
+
+  const handleProfilePhotoUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      try {
+        const publicUrl = await supabaseService.uploadAvatar(currentTeacher.id, file);
+        setProfilePhoto(publicUrl);
+        
+        // Update profile in Supabase
+        await supabaseService.updateProfile(currentTeacher.id, { avatar_url: publicUrl });
+        
+        // Update local state
+        const updatedTeacher = { ...currentTeacher, avatar_url: publicUrl };
+        setCurrentTeacher(updatedTeacher);
+        localStorage.setItem('alakara_current_teacher', JSON.stringify(updatedTeacher));
+        
+        alert('Profile photo updated successfully!');
+      } catch (error: any) {
+        alert('Error uploading photo: ' + error.message);
+      }
+    }
+  };
+
+  const exportAnalysis = (format: 'excel' | 'pdf' = 'excel') => {
+    if (!selectedAnalysisExamId || analysisData.length === 0) return;
+    
+    const exam = exams.find(e => e.id === selectedAnalysisExamId);
+    
+    if (format === 'excel') {
+      const exportData = analysisData.map(row => ({
+        'Rank': row.rank,
+        'Adm No': row.adm,
+        'Student Name': row.name,
+        'Class': row.class,
+        'Total Score': row.totalScore,
+        'Average': row.average.toFixed(1),
+        'Grade': row.grade
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(exportData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Analysis");
+      XLSX.writeFile(wb, `${exam?.title}_Analysis.xlsx`);
+    } else {
+      const doc = new jsPDF();
+      doc.setFontSize(18);
+      doc.text('Performance Analysis', 105, 15, { align: 'center' });
+      doc.setFontSize(12);
+      doc.text(`${exam?.title} (${exam?.term} ${exam?.year})`, 105, 25, { align: 'center' });
+      
+      autoTable(doc, {
+        startY: 35,
+        head: [['Rank', 'Adm', 'Name', 'Class', 'Total', 'Avg', 'Grade']],
+        body: analysisData.map(row => [
+          row.rank,
+          row.adm,
+          row.name,
+          row.class,
+          row.totalScore,
+          row.average.toFixed(1),
+          row.grade
+        ]),
+        theme: 'grid',
+        headStyles: { fillColor: [0, 102, 51] }
+      });
+      
+      doc.save(`${exam?.title}_Analysis.pdf`);
+    }
   };
 
   const downloadMarksTemplate = () => {
@@ -536,8 +622,12 @@ export const TeacherDashboard = () => {
               <p className="text-sm font-bold text-kenya-black">Mr. Kamau</p>
               <p className="text-xs text-gray-500">Mathematics Dept.</p>
             </div>
-            <div className="w-10 h-10 rounded-xl bg-kenya-green/10 flex items-center justify-center">
-              <FileText className="w-5 h-5 text-kenya-green" />
+            <div className="w-10 h-10 rounded-xl bg-kenya-green/10 flex items-center justify-center overflow-hidden">
+              {profilePhoto ? (
+                <img src={profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <FileText className="w-5 h-5 text-kenya-green" />
+              )}
             </div>
           </div>
         </header>
@@ -625,8 +715,8 @@ export const TeacherDashboard = () => {
                           type="file" 
                           id="bulk-upload" 
                           className="hidden" 
-                          accept=".xlsx, .xls, .csv"
-                          onChange={handleBulkUpload}
+                          accept=".csv"
+                          onChange={handleCSVImport}
                         />
                         <Button 
                           variant="secondary" 
@@ -743,10 +833,22 @@ export const TeacherDashboard = () => {
               <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                   <div>
-                    <h3 className="text-xl font-bold text-kenya-black">Performance Analysis</h3>
+                    <h3 className="text-xl font-bold text-kenya-black uppercase tracking-tight">Performance Analysis</h3>
                     <p className="text-sm text-gray-500">View detailed results and subject rankings.</p>
                   </div>
                   <div className="flex flex-wrap items-center gap-4">
+                    {selectedAnalysisExamId && (
+                      <div className="flex items-center gap-2">
+                        <Button variant="secondary" size="sm" onClick={() => exportAnalysis('excel')} className="gap-2 rounded-xl">
+                          <ExcelIcon className="w-4 h-4" />
+                          Excel
+                        </Button>
+                        <Button variant="secondary" size="sm" onClick={() => exportAnalysis('pdf')} className="gap-2 rounded-xl">
+                          <Download className="w-4 h-4" />
+                          PDF
+                        </Button>
+                      </div>
+                    )}
                     <select 
                       value={selectedAnalysisClass}
                       onChange={(e) => setSelectedAnalysisClass(e.target.value)}
@@ -769,29 +871,6 @@ export const TeacherDashboard = () => {
                           <option key={e.id} value={e.id}>{e.title} ({e.term} {e.year})</option>
                         ))}
                     </select>
-                    
-                    {selectedAnalysisExamId && (
-                      <div className="flex items-center gap-4 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="checkbox"
-                            checked={analysisOptions.showGrades}
-                            onChange={(e) => setAnalysisOptions({...analysisOptions, showGrades: e.target.checked})}
-                            className="w-4 h-4 rounded border-gray-300 text-kenya-green focus:ring-kenya-green"
-                          />
-                          <span className="text-xs font-bold text-gray-600">Show Grades</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input 
-                            type="checkbox"
-                            checked={analysisOptions.showRank}
-                            onChange={(e) => setAnalysisOptions({...analysisOptions, showRank: e.target.checked})}
-                            className="w-4 h-4 rounded border-gray-300 text-kenya-green focus:ring-kenya-green"
-                          />
-                          <span className="text-xs font-bold text-gray-600">Show Rank</span>
-                        </label>
-                      </div>
-                    )}
                   </div>
                 </div>
 
@@ -923,114 +1002,118 @@ export const TeacherDashboard = () => {
             <div className="space-y-8">
               <div className="flex items-center justify-between">
                 <div>
-                  <h1 className="text-3xl font-black text-kenya-black uppercase tracking-tight">Learning Materials</h1>
-                  <p className="text-gray-500">Upload and manage exam materials and revision guides.</p>
+                  <h1 className="text-3xl font-black text-kenya-black uppercase tracking-tight">Public Resources</h1>
+                  <p className="text-gray-500">Access curriculum documents, marking schemes, and more.</p>
                 </div>
-                <Button onClick={() => setShowAddMaterialModal(true)} className="gap-2 rounded-2xl shadow-lg shadow-kenya-green/20">
-                  <Upload className="w-5 h-5" />
-                  Upload Material
-                </Button>
               </div>
 
-              <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                        <th className="px-8 py-4">Title</th>
-                        <th className="px-8 py-4">Subject</th>
-                        <th className="px-8 py-4">Status</th>
-                        <th className="px-8 py-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {examMaterials.filter(m => m.teacherName === currentTeacher.name).map((material) => (
-                        <tr key={material.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-8 py-6">
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 bg-gray-100 rounded-lg">
-                                <FileText className="w-4 h-4 text-gray-500" />
-                              </div>
-                              <span className="font-bold text-kenya-black">{material.title}</span>
-                            </div>
-                          </td>
-                          <td className="px-8 py-6 font-bold text-kenya-green text-sm">{material.subject}</td>
-                          <td className="px-8 py-6">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                              material.status === 'Approved' ? 'bg-kenya-green/10 text-kenya-green' :
-                              material.status === 'Rejected' ? 'bg-kenya-red/10 text-kenya-red' : 'bg-yellow-100 text-yellow-700'
-                            }`}>
-                              {material.status}
-                            </span>
-                          </td>
-                          <td className="px-8 py-6 text-right">
-                            <button 
-                              onClick={() => deleteMaterial(material.id)}
-                              className="p-2 text-gray-400 hover:text-kenya-red transition-colors"
-                            >
-                              <Trash2 className="w-5 h-5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      {examMaterials.filter(m => m.teacherName === currentTeacher.name).length === 0 && (
-                        <tr>
-                          <td colSpan={4} className="px-8 py-12 text-center text-gray-400 italic">
-                            No materials uploaded yet.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {isLoadingResources ? (
+                  <div className="col-span-full py-20 text-center">
+                    <div className="animate-spin w-10 h-10 border-4 border-kenya-green border-t-transparent rounded-full mx-auto mb-4"></div>
+                    <p className="text-gray-500 font-bold">Loading resources...</p>
+                  </div>
+                ) : publicResources.length > 0 ? (
+                  publicResources.map((resource) => (
+                    <div key={resource.name} className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-all group">
+                      <div className="bg-blue-50 p-3 rounded-2xl w-fit mb-4 group-hover:rotate-6 transition-transform">
+                        <FileText className="w-6 h-6 text-blue-600" />
+                      </div>
+                      <h3 className="text-lg font-bold text-kenya-black mb-1 truncate">{resource.name}</h3>
+                      <p className="text-xs text-gray-500 mb-6 uppercase font-bold tracking-wider">Public Resource</p>
+                      
+                      <Button 
+                        variant="secondary" 
+                        className="w-full gap-2 rounded-2xl"
+                        onClick={async () => {
+                          const url = await supabaseService.getResourceUrl(resource.name);
+                          window.open(url, '_blank');
+                        }}
+                      >
+                        <Download className="w-4 h-4" />
+                        Download
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <div className="col-span-full py-20 text-center bg-white rounded-[3rem] border-4 border-dashed border-gray-100">
+                    <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-xl font-bold text-gray-400 uppercase tracking-tight">No public resources available</p>
+                  </div>
+                )}
               </div>
             </div>
-          ) : activeTab === 'class-management' ? (
-            <div className="space-y-8">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h1 className="text-3xl font-black text-kenya-black uppercase tracking-tight">Class Management</h1>
-                  <p className="text-gray-500">Managing learners for <span className="font-bold text-kenya-green">{managedClass}</span></p>
-                </div>
-                <Button onClick={() => setShowAddStudentModal(true)} className="gap-2 rounded-2xl shadow-lg shadow-kenya-green/20">
-                  <Plus className="w-5 h-5" />
-                  Admit New Learner
-                </Button>
-              </div>
-
+          ) : activeTab === 'profile' ? (
+            <div className="max-w-4xl mx-auto space-y-8">
               <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
-                    <thead>
-                      <tr className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                        <th className="px-8 py-4">Admission No</th>
-                        <th className="px-8 py-4">Student Name</th>
-                        <th className="px-8 py-4">Status</th>
-                        <th className="px-8 py-4 text-right">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {allStudents.filter(s => s.class === managedClass).map((student) => (
-                        <tr key={student.id} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-8 py-6 font-mono text-sm text-gray-500">{student.adm}</td>
-                          <td className="px-8 py-6 font-bold text-kenya-black">{student.name}</td>
-                          <td className="px-8 py-6">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-kenya-green/10 text-kenya-green uppercase">
-                              Active
-                            </span>
-                          </td>
-                          <td className="px-8 py-6 text-right">
-                            <button 
-                              onClick={() => deleteStudent(student.id)}
-                              className="p-2 text-gray-400 hover:text-kenya-red transition-colors"
-                            >
-                              <Trash2 className="w-5 h-5" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="h-48 bg-kenya-black relative">
+                  <div className="absolute -bottom-16 left-12">
+                    <div className="relative group">
+                      <div className="w-32 h-32 rounded-[2rem] bg-white p-2 shadow-xl">
+                        <div className="w-full h-full rounded-[1.5rem] bg-gray-100 overflow-hidden flex items-center justify-center">
+                          {profilePhoto ? (
+                            <img src={profilePhoto} alt="Profile" className="w-full h-full object-cover" />
+                          ) : (
+                            <Users className="w-12 h-12 text-gray-300" />
+                          )}
+                        </div>
+                      </div>
+                      <label className="absolute bottom-2 right-2 p-2 bg-kenya-green text-white rounded-xl shadow-lg cursor-pointer hover:scale-110 transition-transform">
+                        <Upload className="w-4 h-4" />
+                        <input type="file" className="hidden" accept="image/*" onChange={handleProfilePhotoUpload} />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="pt-20 p-12">
+                  <div className="flex justify-between items-start mb-12">
+                    <div>
+                      <h1 className="text-3xl font-black text-kenya-black uppercase tracking-tight mb-2">{currentTeacher.name}</h1>
+                      <div className="flex items-center gap-3">
+                        <span className="px-3 py-1 bg-kenya-green/10 text-kenya-green rounded-full text-[10px] font-black uppercase tracking-widest">
+                          {currentTeacher.role}
+                        </span>
+                        <span className="text-gray-400">•</span>
+                        <p className="text-gray-500 font-medium">Mathematics Department</p>
+                      </div>
+                    </div>
+                    <Button variant="secondary" className="rounded-2xl">Edit Profile</Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-6">
+                      <h3 className="text-sm font-black text-kenya-black uppercase tracking-widest border-b border-gray-100 pb-2">Assigned Classes</h3>
+                      <div className="flex flex-wrap gap-3">
+                        {assignedClasses.map(c => (
+                          <div key={c} className="px-4 py-3 bg-gray-50 border border-gray-100 rounded-2xl flex items-center gap-3">
+                            <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center text-kenya-green font-bold shadow-sm">
+                              {c.charAt(0)}
+                            </div>
+                            <span className="font-bold text-kenya-black">{c}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      <h3 className="text-sm font-black text-kenya-black uppercase tracking-widest border-b border-gray-100 pb-2">Account Details</h3>
+                      <div className="space-y-4">
+                        <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                          <span className="text-sm text-gray-500">Email</span>
+                          <span className="text-sm font-bold text-kenya-black">{currentTeacher.email || 'teacher@alakara.ac.ke'}</span>
+                        </div>
+                        <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                          <span className="text-sm text-gray-500">Employee ID</span>
+                          <span className="text-sm font-bold text-kenya-black">EMP-2024-089</span>
+                        </div>
+                        <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                          <span className="text-sm text-gray-500">Status</span>
+                          <span className="text-sm font-bold text-kenya-green">Active</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1167,6 +1250,91 @@ export const TeacherDashboard = () => {
                 </div>
                 <Button type="submit" className="w-full py-4 rounded-xl font-bold">Admit Learner</Button>
               </form>
+            </motion.div>
+          </div>
+        )}
+        {/* Import Preview Modal */}
+        {showImportPreview && (
+          <div className="fixed inset-0 bg-kenya-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-[2.5rem] w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+            >
+              <div className="p-8 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                <div>
+                  <h2 className="text-2xl font-black text-kenya-black uppercase tracking-tight">CSV Import Preview</h2>
+                  <p className="text-sm text-gray-500">Review the data before confirming the import.</p>
+                </div>
+                <button onClick={() => setShowImportPreview(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8">
+                {importErrors.length > 0 && (
+                  <div className="mb-8 p-4 bg-kenya-red/10 border border-kenya-red/20 rounded-2xl">
+                    <div className="flex items-center gap-2 text-kenya-red font-bold mb-2">
+                      <AlertCircle className="w-5 h-5" />
+                      Import Errors Found
+                    </div>
+                    <ul className="text-sm text-kenya-red/80 list-disc list-inside">
+                      {importErrors.map((err, i) => <li key={i}>{err}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                <div className="overflow-x-auto border border-gray-100 rounded-2xl">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        <th className="px-6 py-4">Adm No</th>
+                        <th className="px-6 py-4">Student Name</th>
+                        <th className="px-6 py-4 text-center">Score</th>
+                        <th className="px-6 py-4">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {importPreviewData.map((row, i) => (
+                        <tr key={i} className="hover:bg-gray-50/50 transition-colors">
+                          <td className="px-6 py-4 font-mono text-sm text-gray-500">{row.adm}</td>
+                          <td className="px-6 py-4 font-bold text-kenya-black">{row.name}</td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`font-black text-lg ${row.isValid ? 'text-kenya-black' : 'text-kenya-red'}`}>
+                              {row.score}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
+                            {row.isValid ? (
+                              <span className="text-kenya-green flex items-center gap-1 text-[10px] font-black uppercase">
+                                <CheckCircle2 className="w-3 h-3" />
+                                Valid
+                              </span>
+                            ) : (
+                              <span className="text-kenya-red flex items-center gap-1 text-[10px] font-black uppercase">
+                                <AlertCircle className="w-3 h-3" />
+                                Invalid
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="p-8 border-t border-gray-100 bg-gray-50/50 flex justify-end gap-4">
+                <Button variant="ghost" onClick={() => setShowImportPreview(false)} className="rounded-2xl">Cancel</Button>
+                <Button 
+                  onClick={confirmImport} 
+                  disabled={importPreviewData.length === 0 || importPreviewData.every(r => !r.isValid)}
+                  className="rounded-2xl gap-2 shadow-lg shadow-kenya-green/20"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  Confirm Import ({importPreviewData.filter(r => r.isValid).length} Records)
+                </Button>
+              </div>
             </motion.div>
           </div>
         )}

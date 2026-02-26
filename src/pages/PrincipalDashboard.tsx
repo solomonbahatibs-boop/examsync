@@ -37,7 +37,10 @@ import {
   Building2,
   Image as ImageIcon,
   Quote,
-  Trophy
+  Trophy,
+  Edit3,
+  Printer,
+  Save
 } from 'lucide-react';
 import { NotificationBell, addNotification } from '../components/NotificationBell';
 import { useNavigate } from 'react-router-dom';
@@ -61,6 +64,11 @@ import {
   Cell
 } from 'recharts';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+import { supabaseService } from '../services/supabaseService';
+import { Database } from '../lib/database.types';
 
 export const PrincipalDashboard = () => {
   const navigate = useNavigate();
@@ -157,6 +165,80 @@ export const PrincipalDashboard = () => {
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [showAddClassModal, setShowAddClassModal] = useState(false);
   const [showReportPreview, setShowReportPreview] = useState(false);
+  const [selectedEditClass, setSelectedEditClass] = useState('');
+  const [selectedEditSubject, setSelectedEditSubject] = useState('');
+  const [selectedEditExamId, setSelectedEditExamId] = useState('');
+  const [editExamConfig, setEditExamConfig] = useState({ weighting: 100, maxMarks: 100 });
+  const [showEditConfirmation, setShowEditConfirmation] = useState(false);
+
+  const handleSaveExamEdit = async () => {
+    try {
+      const exam = exams.find(e => e.id === selectedEditExamId);
+      if (!exam) return;
+
+      // Update Supabase
+      await supabaseService.updateExam(selectedEditExamId, {
+        weighting: editExamConfig.weighting
+      });
+
+      // Update Local State
+      const updatedExams = exams.map(e => 
+        e.id === selectedEditExamId ? { ...e, weighting: editExamConfig.weighting } : e
+      );
+      setExams(updatedExams);
+      
+      addLog('Edit Exam', `Updated configuration for ${exam.title}`);
+      setShowEditConfirmation(false);
+      alert('Exam configuration updated successfully!');
+    } catch (error: any) {
+      alert('Error saving exam edit: ' + error.message);
+    }
+  };
+  const downloadReportPDF = () => {
+    const student = students.find(s => s.id === reportConfig.selectedStudentId);
+    if (!student) return;
+
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(18);
+    doc.text(schoolSettings.name || school.name, 105, 15, { align: 'center' });
+    doc.setFontSize(14);
+    doc.text('Academic Performance Report', 105, 25, { align: 'center' });
+    
+    // Student Info
+    doc.setFontSize(10);
+    doc.text(`Student Name: ${student.name}`, 14, 40);
+    doc.text(`Admission No: ${student.adm}`, 14, 45);
+    doc.text(`Class: ${student.class}`, 14, 50);
+    doc.text(`Academic Year: 2024`, 14, 55);
+
+    // Table
+    const tableHead = [['Learning Area', 'Teacher', ...reportConfig.selectedExamIds.map(id => exams.find(e => e.id === id)?.title || ''), 'Avg', 'Grade']];
+    const tableBody = learningAreas.map(subject => {
+      const teacher = staff.find(t => t.assignedSubjects?.includes(subject) && t.assignedClasses?.includes(student.class))?.name || 'N/A';
+      const scores = reportConfig.selectedExamIds.map(id => {
+        const mark = marks.find(m => m.studentId === student.id && m.examId === id && m.subject === subject);
+        return mark ? mark.score : '--';
+      });
+      const validScores = scores.filter(s => s !== '--').map(s => parseFloat(s as string));
+      const avg = validScores.length > 0 ? (validScores.reduce((a, b) => a + b, 0) / validScores.length).toFixed(1) : '--';
+      const grade = avg !== '--' ? gradingSystem.find(g => parseFloat(avg) >= g.min && parseFloat(avg) <= g.max)?.grade || '--' : '--';
+      
+      return [subject, teacher, ...scores, avg, grade];
+    });
+
+    autoTable(doc, {
+      startY: 65,
+      head: tableHead,
+      body: tableBody,
+      theme: 'grid',
+      headStyles: { fillColor: [0, 102, 51] }
+    });
+
+    doc.save(`${student.name}_Report_Card.pdf`);
+  };
+
   const [students, setStudents] = useState<any[]>(() => {
     const saved = localStorage.getItem('alakara_students');
     if (saved) return JSON.parse(saved);
@@ -340,7 +422,7 @@ export const PrincipalDashboard = () => {
       
       const updatedSchool = allSchools.find((s: any) => s.id === currentSchool.id);
       
-      if (updatedSchool) {
+      if (updatedSchool && JSON.stringify(updatedSchool) !== JSON.stringify(school)) {
         setSchool(updatedSchool);
         
         // Check subscription expiry
@@ -373,18 +455,7 @@ export const PrincipalDashboard = () => {
         } else {
           setDaysToExpiry(null);
         }
-
-        setSchoolSettings({
-          name: updatedSchool.name || '',
-          motto: updatedSchool.motto || '',
-          address: updatedSchool.address || '',
-          phone: updatedSchool.phone || '',
-          email: updatedSchool.email || '',
-          website: updatedSchool.website || '',
-          logo: updatedSchool.logo || '',
-          letterheadTemplate: updatedSchool.letterheadTemplate || 'standard'
-        });
-      } else {
+      } else if (!updatedSchool) {
         navigate('/login');
       }
     };
@@ -607,15 +678,18 @@ export const PrincipalDashboard = () => {
 
   // Auto-save drafts
   useEffect(() => {
-    const draft = {
-      newExam,
-      newStaff,
-      schoolSettings,
-      newClass,
-      newStudent
-    };
-    localStorage.setItem('alakara_config_draft', JSON.stringify(draft));
-    setHasUnsavedChanges(true);
+    const timer = setTimeout(() => {
+      const draft = {
+        newExam,
+        newStaff,
+        schoolSettings,
+        newClass,
+        newStudent
+      };
+      localStorage.setItem('alakara_config_draft', JSON.stringify(draft));
+      setHasUnsavedChanges(true);
+    }, 1000);
+    return () => clearTimeout(timer);
   }, [newExam, newStaff, schoolSettings, newClass, newStudent]);
 
   // Load drafts on mount
@@ -1079,85 +1153,165 @@ export const PrincipalDashboard = () => {
     };
   };
 
-  const exportAnalysis = () => {
+  const exportAnalysis = (format: 'excel' | 'pdf' = 'excel') => {
     if (!selectedAnalysisExamId || analysisData.length === 0) return;
     
     const exam = exams.find(e => e.id === selectedAnalysisExamId);
     const highlights = getAnalysisHighlights();
     
-    const mainSheetData = analysisData.map(row => {
-      const exportRow: any = {
-        'Rank': row.rank,
-        'Adm No': row.adm,
-        'Student Name': row.name,
-        'Class': row.class
-      };
-      
-      learningAreas.forEach(la => {
-        exportRow[la] = row.subjectScores[la] ?? '--';
+    if (format === 'excel') {
+      const mainSheetData = analysisData.map(row => {
+        const exportRow: any = {
+          'Rank': row.rank,
+          'Adm No': row.adm,
+          'Student Name': row.name,
+          'Class': row.class
+        };
+        
+        learningAreas.forEach(la => {
+          exportRow[la] = row.subjectScores[la] ?? '--';
+        });
+        
+        exportRow['Total'] = row.totalScore;
+        exportRow['Average (%)'] = row.average.toFixed(1);
+        exportRow['Grade'] = row.grade;
+        
+        return exportRow;
       });
-      
-      exportRow['Total'] = row.totalScore;
-      exportRow['Average (%)'] = row.average.toFixed(1);
-      exportRow['Grade'] = row.grade;
-      
-      return exportRow;
-    });
 
-    const highlightsData = [
-      { Category: 'Best Student', Name: highlights?.bestStudent?.name, Detail: `${highlights?.bestStudent?.average.toFixed(1)}% (Rank 1)` },
-    ];
+      const highlightsData = [
+        { Category: 'Best Student', Name: highlights?.bestStudent?.name, Detail: `${highlights?.bestStudent?.average.toFixed(1)}% (Rank 1)` },
+      ];
 
-    if (highlights?.mostImproved) {
-      highlightsData.push({ 
-        Category: 'Most Improved', 
-        Name: highlights.mostImproved.name, 
-        Detail: `+${highlights.mostImproved.improvement.toFixed(1)}% from ${highlights.previousExamTitle}` 
+      if (highlights?.mostImproved) {
+        highlightsData.push({ 
+          Category: 'Most Improved', 
+          Name: highlights.mostImproved.name, 
+          Detail: `+${highlights.mostImproved.improvement.toFixed(1)}% from ${highlights.previousExamTitle}` 
+        });
+      }
+
+      if (highlights?.mostDropped) {
+        highlightsData.push({ 
+          Category: 'Most Dropped', 
+          Name: highlights.mostDropped.name, 
+          Detail: `${highlights.mostDropped.improvement.toFixed(1)}% from ${highlights.previousExamTitle}` 
+        });
+      }
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(mainSheetData);
+      const wsHighlights = XLSX.utils.json_to_sheet(highlightsData);
+      
+      XLSX.utils.book_append_sheet(wb, ws, "Full Analysis");
+      XLSX.utils.book_append_sheet(wb, wsHighlights, "Highlights");
+      
+      XLSX.writeFile(wb, `${exam?.title}_Analysis.xlsx`);
+    } else {
+      // PDF Export
+      const doc = new jsPDF();
+      
+      // Header
+      doc.setFontSize(18);
+      doc.text(schoolSettings.name || school.name, 105, 15, { align: 'center' });
+      doc.setFontSize(14);
+      doc.text(`${exam?.title} - Performance Analysis`, 105, 25, { align: 'center' });
+      doc.setFontSize(10);
+      doc.text(`Class: ${selectedAnalysisClass} | Date: ${new Date().toLocaleDateString()}`, 105, 32, { align: 'center' });
+
+      // Highlights
+      doc.setFontSize(12);
+      doc.text('Analysis Highlights', 14, 45);
+      autoTable(doc, {
+        startY: 50,
+        head: [['Category', 'Student Name', 'Details']],
+        body: [
+          ['Best Student', highlights?.bestStudent?.name || 'N/A', `${highlights?.bestStudent?.average.toFixed(1)}%`],
+          ['Most Improved', highlights?.mostImproved?.name || 'N/A', highlights?.mostImproved ? `+${highlights.mostImproved.improvement.toFixed(1)}%` : 'N/A'],
+          ['Most Dropped', highlights?.mostDropped?.name || 'N/A', highlights?.mostDropped ? `-${highlights.mostDropped.improvement.toFixed(1)}%` : 'N/A'],
+        ],
+        theme: 'striped',
+        headStyles: { fillColor: [0, 102, 51] }
       });
+
+      // Main Table
+      const tableHead = [['Rank', 'Adm', 'Name', ...learningAreas, 'Total', 'Avg', 'Grade']];
+      const tableBody = analysisData.map(row => [
+        row.rank,
+        row.adm,
+        row.name,
+        ...learningAreas.map(la => row.subjectScores[la] ?? '--'),
+        row.totalScore.toFixed(0),
+        `${row.average.toFixed(1)}%`,
+        row.grade
+      ]);
+
+      autoTable(doc, {
+        startY: (doc as any).lastAutoTable.finalY + 15,
+        head: tableHead,
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { fillColor: [0, 102, 51], fontSize: 8 },
+        styles: { fontSize: 7 },
+        columnStyles: {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 15 },
+          2: { cellWidth: 30 }
+        }
+      });
+
+      doc.save(`${exam?.title}_Analysis.pdf`);
     }
-
-    if (highlights?.mostDropped) {
-      highlightsData.push({ 
-        Category: 'Most Dropped', 
-        Name: highlights.mostDropped.name, 
-        Detail: `${highlights.mostDropped.improvement.toFixed(1)}% from ${highlights.previousExamTitle}` 
-      });
-    }
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(mainSheetData);
-    const wsHighlights = XLSX.utils.json_to_sheet(highlightsData);
-    
-    XLSX.utils.book_append_sheet(wb, ws, "Full Analysis");
-    XLSX.utils.book_append_sheet(wb, wsHighlights, "Highlights");
-    
-    XLSX.writeFile(wb, `${exam?.title}_Analysis.xlsx`);
   };
 
-  const handleUpdateSchool = (e: FormEvent) => {
+  const handleUpdateSchool = async (e: FormEvent) => {
     e.preventDefault();
-    const allSchools = JSON.parse(localStorage.getItem('alakara_schools') || '[]');
-    const updatedSchools = allSchools.map((s: any) => 
-      s.id === school.id ? { ...s, ...schoolSettings } : s
-    );
-    localStorage.setItem('alakara_schools', JSON.stringify(updatedSchools));
-    
-    // Update current school too
-    const currentSchool = JSON.parse(localStorage.getItem('alakara_current_school') || '{}');
-    localStorage.setItem('alakara_current_school', JSON.stringify({ ...currentSchool, ...schoolSettings }));
-    
-    setSchool({ ...school, ...schoolSettings });
-    alert('School settings updated successfully!');
+    try {
+      // Update Supabase
+      await supabaseService.updateSchoolSettings(school.id, {
+        name: schoolSettings.name,
+        motto: schoolSettings.motto,
+        email: schoolSettings.email,
+        phone: schoolSettings.phone,
+        website: schoolSettings.website,
+        address: schoolSettings.address,
+        letterhead_template: schoolSettings.letterheadTemplate,
+        logo_url: schoolSettings.logo
+      });
+
+      const allSchools = JSON.parse(localStorage.getItem('alakara_schools') || '[]');
+      const updatedSchools = allSchools.map((s: any) => 
+        s.id === school.id ? { ...s, ...schoolSettings } : s
+      );
+      localStorage.setItem('alakara_schools', JSON.stringify(updatedSchools));
+      
+      // Update current school too
+      const currentSchool = JSON.parse(localStorage.getItem('alakara_current_school') || '{}');
+      localStorage.setItem('alakara_current_school', JSON.stringify({ ...currentSchool, ...schoolSettings }));
+      
+      setSchool({ ...school, ...schoolSettings });
+      setHasUnsavedChanges(false);
+      localStorage.removeItem('alakara_config_draft');
+      alert('School settings updated successfully!');
+      
+      addLog('Update School Settings', `Updated settings for ${schoolSettings.name}`);
+    } catch (error: any) {
+      alert('Error updating school settings: ' + error.message);
+    }
   };
 
-  const handleLogoUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSchoolSettings({ ...schoolSettings, logo: reader.result as string });
-      };
-      reader.readAsDataURL(file);
+      try {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setSchoolSettings({ ...schoolSettings, logo: reader.result as string });
+        };
+        reader.readAsDataURL(file);
+      } catch (error: any) {
+        alert('Error uploading logo: ' + error.message);
+      }
     }
   };
 
@@ -1704,6 +1858,7 @@ export const PrincipalDashboard = () => {
                       { id: 'create-exam', title: 'Create New Exam', desc: 'Schedule and set up new examinations.', icon: PlusCircle, color: 'text-kenya-green', bg: 'bg-kenya-green/10' },
                       { id: 'learning-area', title: 'Learning Areas', desc: 'Manage subjects and curriculum areas.', icon: Library, color: 'text-blue-600', bg: 'bg-blue-50' },
                       { id: 'grading', title: 'Grading System', desc: 'Define grade boundaries and scales.', icon: ClipboardList, color: 'text-orange-600', bg: 'bg-orange-50' },
+                      { id: 'edit-exam', title: 'Edit Exams & Subjects', desc: 'Modify existing exam configurations.', icon: Edit3, color: 'text-indigo-600', bg: 'bg-indigo-50' },
                       { id: 'analysis', title: 'Analyse Results', desc: 'Deep dive into student performance data.', icon: BarChart3, color: 'text-kenya-red', bg: 'bg-kenya-red/10' },
                       { id: 'results-processing', title: 'Results Processing', desc: 'Subject champions and top performers.', icon: Trophy, color: 'text-yellow-600', bg: 'bg-yellow-50' },
                       { id: 'reports', title: 'Generate Report Cards', desc: 'Produce and distribute student reports.', icon: FileSpreadsheet, color: 'text-purple-600', bg: 'bg-purple-50' },
@@ -2003,6 +2158,92 @@ export const PrincipalDashboard = () => {
                       </div>
                     </div>
                   </div>
+                ) : academicSubTab === 'edit-exam' ? (
+                  <div className="max-w-4xl mx-auto space-y-8">
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                      <h3 className="text-xl font-bold text-kenya-black mb-8">Edit Exam Configuration</h3>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div className="space-y-2">
+                          <label className="text-xs font-black text-gray-500 uppercase">Select Class</label>
+                          <select 
+                            value={selectedEditClass}
+                            onChange={(e) => setSelectedEditClass(e.target.value)}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                          >
+                            <option value="">Choose Class...</option>
+                            {classes.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-black text-gray-500 uppercase">Select Subject</label>
+                          <select 
+                            value={selectedEditSubject}
+                            onChange={(e) => setSelectedEditSubject(e.target.value)}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                          >
+                            <option value="">Choose Subject...</option>
+                            {learningAreas.map(la => <option key={la} value={la}>{la}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-black text-gray-500 uppercase">Select Exam</label>
+                          <select 
+                            value={selectedEditExamId}
+                            onChange={(e) => setSelectedEditExamId(e.target.value)}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                          >
+                            <option value="">Choose Exam...</option>
+                            {exams.filter(e => e.classes.includes(selectedEditClass) || e.classes.length === 0).map(e => (
+                              <option key={e.id} value={e.id}>{e.title} ({e.term} {e.year})</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {selectedEditExamId && (
+                        <div className="space-y-6 border-t border-gray-100 pt-8">
+                          {exams.find(e => e.id === selectedEditExamId)?.locked ? (
+                            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center gap-3 text-amber-800">
+                              <Lock className="w-5 h-5" />
+                              <p className="text-sm font-medium">This exam is locked and cannot be edited. Please unlock it first.</p>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                  <label className="text-xs font-black text-gray-500 uppercase">Weighting (%)</label>
+                                  <input 
+                                    type="number"
+                                    value={editExamConfig.weighting}
+                                    onChange={(e) => setEditExamConfig({...editExamConfig, weighting: parseInt(e.target.value)})}
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="text-xs font-black text-gray-500 uppercase">Max Marks</label>
+                                  <input 
+                                    type="number"
+                                    value={editExamConfig.maxMarks}
+                                    onChange={(e) => setEditExamConfig({...editExamConfig, maxMarks: parseInt(e.target.value)})}
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                                  />
+                                </div>
+                              </div>
+                              
+                              <div className="flex justify-end gap-3">
+                                <Button variant="ghost" onClick={() => setSelectedEditExamId('')}>Cancel</Button>
+                                <Button onClick={() => setShowEditConfirmation(true)} className="gap-2">
+                                  <Save className="w-4 h-4" />
+                                  Save Changes
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 ) : academicSubTab === 'analysis' ? (
                   <div className="space-y-8">
                     <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
@@ -2055,10 +2296,16 @@ export const PrincipalDashboard = () => {
                                   <span className="text-xs font-bold text-gray-600">Show Rank</span>
                                 </label>
                               </div>
-                              <Button onClick={exportAnalysis} className="gap-2 py-2 text-xs">
-                                <Download className="w-4 h-4" />
-                                Export Analysis
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Button onClick={() => exportAnalysis('excel')} variant="secondary" className="gap-2 py-2 text-xs">
+                                  <Download className="w-4 h-4" />
+                                  Excel
+                                </Button>
+                                <Button onClick={() => exportAnalysis('pdf')} className="gap-2 py-2 text-xs">
+                                  <Download className="w-4 h-4" />
+                                  PDF
+                                </Button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -3147,7 +3394,35 @@ export const PrincipalDashboard = () => {
           </div>
         )}
 
-        {/* Report Preview Modal */}
+        {/* Edit Exam Confirmation Modal */}
+      {showEditConfirmation && (
+        <div className="fixed inset-0 bg-kenya-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
+          >
+            <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mb-6">
+              <AlertTriangle className="w-8 h-8" />
+            </div>
+            <h3 className="text-2xl font-bold text-kenya-black mb-2">Confirm Changes</h3>
+            <p className="text-gray-600 mb-8">
+              You are about to modify the configuration for <span className="font-bold">{(exams.find(e => e.id === selectedEditExamId))?.title}</span>. 
+              This may affect how results are calculated and ranked. Are you sure you want to proceed?
+            </p>
+            <div className="flex gap-3">
+              <Button variant="ghost" className="flex-1" onClick={() => setShowEditConfirmation(false)}>
+                Cancel
+              </Button>
+              <Button className="flex-1 bg-kenya-green hover:bg-kenya-green/90" onClick={handleSaveExamEdit}>
+                Confirm & Save
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Report Preview Modal */}
         {showReportPreview && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-kenya-black/60 backdrop-blur-sm">
             <motion.div 
@@ -3161,9 +3436,13 @@ export const PrincipalDashboard = () => {
                   <p className="text-sm text-gray-500">Review the document before printing or distribution.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" onClick={() => window.print()} className="flex items-center gap-2">
+                  <Button variant="ghost" onClick={downloadReportPDF} className="flex items-center gap-2">
                     <Download className="w-4 h-4" />
-                    Print PDF
+                    Download PDF
+                  </Button>
+                  <Button variant="ghost" onClick={() => window.print()} className="flex items-center gap-2">
+                    <Printer className="w-4 h-4" />
+                    Print
                   </Button>
                   <button onClick={() => setShowReportPreview(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                     <X className="w-5 h-5" />
