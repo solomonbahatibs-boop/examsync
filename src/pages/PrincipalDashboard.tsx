@@ -233,8 +233,27 @@ export const PrincipalDashboard = () => {
     setEditMarksData(prev => prev.map(d => d.studentId === studentId ? { ...d, score } : d));
   };
 
+  const [logs, setLogs] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_audit_trail');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const addLog = (action: string, details: string) => {
+    const newLog = {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      user: 'Principal',
+      action,
+      details
+    };
+    const updatedLogs = [newLog, ...logs].slice(0, 100);
+    setLogs(updatedLogs);
+    localStorage.setItem('alakara_audit_trail', JSON.stringify(updatedLogs));
+  };
+
   const saveEditedMarks = () => {
     const newMarks = [...marks];
+    let changesMade = false;
     editMarksData.forEach(data => {
       if (data.score !== '') {
         const markIdx = newMarks.findIndex(m => m.studentId === data.studentId && m.examId === selectedEditExamId && m.subject === selectedEditSubject);
@@ -246,12 +265,23 @@ export const PrincipalDashboard = () => {
           subject: selectedEditSubject,
           updatedAt: new Date().toISOString()
         };
-        if (markIdx > -1) newMarks[markIdx] = markData;
-        else newMarks.push(markData);
+        if (markIdx > -1) {
+          if (newMarks[markIdx].score !== data.score) {
+            newMarks[markIdx] = markData;
+            changesMade = true;
+          }
+        } else {
+          newMarks.push(markData);
+          changesMade = true;
+        }
       }
     });
     setMarks(newMarks);
     setShowEditConfirmModal(false);
+    if (changesMade) {
+      const exam = exams.find(e => e.id === selectedEditExamId);
+      addLog('Edit Marks', `Edited marks for ${selectedEditClass} - ${selectedEditSubject} in ${exam?.title}`);
+    }
     alert('Marks updated successfully!');
   };
 
@@ -720,24 +750,6 @@ export const PrincipalDashboard = () => {
     setNewExam({ title: '', term: 'Term 1', year: '2026', classes: [], subjects: [], startDate: '', endDate: '' });
     setAcademicSubTab('overview');
     alert('Exam created successfully! It is now visible to teachers.');
-  };
-
-  const [logs, setLogs] = useState<any[]>(() => {
-    const saved = localStorage.getItem('alakara_audit_trail');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const addLog = (action: string, details: string) => {
-    const newLog = {
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      user: 'Principal',
-      action,
-      details
-    };
-    const updatedLogs = [newLog, ...logs].slice(0, 100);
-    setLogs(updatedLogs);
-    localStorage.setItem('alakara_audit_trail', JSON.stringify(updatedLogs));
   };
 
   const processExam = (id: string) => {
