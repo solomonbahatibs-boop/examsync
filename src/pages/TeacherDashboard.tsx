@@ -139,6 +139,8 @@ export const TeacherDashboard = () => {
   const [selectedEntryClass, setSelectedEntryClass] = useState('');
   const [selectedEntryStream, setSelectedEntryStream] = useState('');
   const [selectedEntrySubject, setSelectedEntrySubject] = useState('');
+  const [selectedEntryStudent, setSelectedEntryStudent] = useState<any>(null);
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
   const [entryMode, setEntryMode] = useState<'individual' | 'bulk'>('individual');
   const [analysisOptions, setAnalysisOptions] = useState({
     showGrades: true,
@@ -210,15 +212,24 @@ export const TeacherDashboard = () => {
   }, [allStudents]);
 
   useEffect(() => {
-    if (activeExam && selectedEntrySubject && selectedEntryClass) {
-      const examMarks = marks.filter(m => m.examId === activeExam.id && m.subject === selectedEntrySubject);
-      const marksMap: any = {};
-      examMarks.forEach(m => {
-        marksMap[m.studentId] = m.assessments || {};
-      });
-      setCurrentMarks(marksMap);
+    if (activeExam) {
+      if (entryMode === 'individual' && selectedEntryStudent) {
+        const examMarks = marks.filter(m => m.examId === activeExam.id && m.studentId === selectedEntryStudent.id);
+        const marksMap: any = {};
+        examMarks.forEach(m => {
+          marksMap[m.subject] = m.assessments || {};
+        });
+        setCurrentMarks(marksMap);
+      } else if (entryMode === 'bulk' && selectedEntrySubject && selectedEntryClass) {
+        const examMarks = marks.filter(m => m.examId === activeExam.id && m.subject === selectedEntrySubject);
+        const marksMap: any = {};
+        examMarks.forEach(m => {
+          marksMap[m.studentId] = m.assessments || {};
+        });
+        setCurrentMarks(marksMap);
+      }
     }
-  }, [activeExam, selectedEntrySubject, selectedEntryClass, marks]);
+  }, [activeExam, selectedEntrySubject, selectedEntryClass, selectedEntryStudent, entryMode, marks]);
 
   const [newStudent, setNewStudent] = useState({ name: '', adm: '' });
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
@@ -292,49 +303,95 @@ export const TeacherDashboard = () => {
       return;
     }
     
-    if (!selectedEntrySubject) {
-      alert('Please select a subject to save marks.');
-      return;
+    if (entryMode === 'individual') {
+      if (!selectedEntryStudent) {
+        alert('Please select a student to save marks.');
+        return;
+      }
+
+      const newMarks = [...marks.filter(m => m.examId !== activeExam.id || m.studentId !== selectedEntryStudent.id)];
+      
+      Object.entries(currentMarks).forEach(([subject, assessments]: [string, any]) => {
+        let total = 0;
+        Object.values(assessments).forEach(val => {
+          if (val) total += parseFloat(val as string);
+        });
+
+        const percentage = total; // Since total max is 100 in default config
+
+        // Find grade
+        const gradeObj = gradingSystem.find(g => percentage >= g.min && percentage <= g.max);
+        const grade = gradeObj ? gradeObj.grade : 'E';
+
+        newMarks.push({
+          id: `${activeExam.id}-${selectedEntryStudent.id}-${subject}`,
+          examId: activeExam.id,
+          studentId: selectedEntryStudent.id,
+          subject,
+          assessments,
+          total,
+          percentage,
+          grade,
+          updatedAt: new Date().toISOString()
+        });
+      });
+
+      setMarks(newMarks);
+      addLog('Save Marks', `Updated marks for ${activeExam.title} - ${selectedEntryStudent.name}`);
+      alert('Marks saved successfully!');
+      
+      addNotification({
+        title: 'Marks Saved',
+        message: `You have successfully saved marks for "${activeExam.title}" - ${selectedEntryStudent.name}.`,
+        type: 'success',
+        role: 'teacher',
+        userId: currentTeacher.id
+      });
+    } else {
+      if (!selectedEntrySubject) {
+        alert('Please select a subject to save marks.');
+        return;
+      }
+
+      const newMarks = [...marks.filter(m => m.examId !== activeExam.id || m.subject !== selectedEntrySubject)];
+      
+      Object.entries(currentMarks).forEach(([studentId, assessments]: [string, any]) => {
+        let total = 0;
+        Object.values(assessments).forEach(val => {
+          if (val) total += parseFloat(val as string);
+        });
+
+        const percentage = total; // Since total max is 100 in default config
+
+        // Find grade
+        const gradeObj = gradingSystem.find(g => percentage >= g.min && percentage <= g.max);
+        const grade = gradeObj ? gradeObj.grade : 'E';
+
+        newMarks.push({
+          id: `${activeExam.id}-${studentId}-${selectedEntrySubject}`,
+          examId: activeExam.id,
+          studentId,
+          subject: selectedEntrySubject,
+          assessments,
+          total,
+          percentage,
+          grade,
+          updatedAt: new Date().toISOString()
+        });
+      });
+
+      setMarks(newMarks);
+      addLog('Save Marks', `Updated marks for ${activeExam.title} - ${selectedEntrySubject}`);
+      alert('Marks saved successfully!');
+      
+      addNotification({
+        title: 'Marks Saved',
+        message: `You have successfully saved marks for "${activeExam.title}" - ${selectedEntrySubject}.`,
+        type: 'success',
+        role: 'teacher',
+        userId: currentTeacher.id
+      });
     }
-
-    const newMarks = [...marks.filter(m => m.examId !== activeExam.id || m.subject !== selectedEntrySubject)];
-    
-    Object.entries(currentMarks).forEach(([studentId, assessments]: [string, any]) => {
-      let total = 0;
-      Object.values(assessments).forEach(val => {
-        if (val) total += parseFloat(val as string);
-      });
-
-      const percentage = total; // Since total max is 100 in default config
-
-      // Find grade
-      const gradeObj = gradingSystem.find(g => percentage >= g.min && percentage <= g.max);
-      const grade = gradeObj ? gradeObj.grade : 'E';
-
-      newMarks.push({
-        id: `${activeExam.id}-${studentId}-${selectedEntrySubject}`,
-        examId: activeExam.id,
-        studentId,
-        subject: selectedEntrySubject,
-        assessments,
-        total,
-        percentage,
-        grade,
-        updatedAt: new Date().toISOString()
-      });
-    });
-
-    setMarks(newMarks);
-    addLog('Save Marks', `Updated marks for ${activeExam.title} - ${selectedEntrySubject}`);
-    alert('Marks saved successfully!');
-    
-    addNotification({
-      title: 'Marks Saved',
-      message: `You have successfully saved marks for "${activeExam.title}" - ${selectedEntrySubject}.`,
-      type: 'success',
-      role: 'teacher',
-      userId: currentTeacher.id
-    });
   };
 
   const handleBulkUpload = (e: ChangeEvent<HTMLInputElement>) => {
