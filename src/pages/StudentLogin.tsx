@@ -3,14 +3,12 @@ import { motion } from 'motion/react';
 import { GraduationCap, Lock, User, ArrowLeft, Rocket } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '../components/Button';
-import { PasswordResetModal } from '../components/PasswordResetModal';
 
 export const StudentLogin = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showResetModal, setShowResetModal] = useState(false);
   const navigate = useNavigate();
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -19,25 +17,11 @@ export const StudentLogin = () => {
     setError('');
 
     setTimeout(() => {
-      const students = JSON.parse(localStorage.getItem('alakara_students') || '[]');
-      const student = students.find((s: any) => s.adm === username);
-
-      const isDefaultLogin = username === 'student' && password === 'student123';
-      
-      let isValidPassword = false;
-      if (student) {
-        const names = student.name.split(' ').map((n: string) => n.toLowerCase());
-        isValidPassword = names.includes(password.toLowerCase()) || password === 'password123';
-      }
-
-      if (isDefaultLogin || isValidPassword) {
+      if (username === 'student' && password === 'student123') {
         setIsLoading(false);
-        // Store the logged in student for the dashboard
-        const loggedInStudent = student || { id: 'S1', name: 'Alice Wanjiku', adm: 'ADM-2024-001', class: 'Form 1' };
-        localStorage.setItem('alakara_current_student', JSON.stringify(loggedInStudent));
         navigate('/student/dashboard');
       } else {
-        setError('Check your Admission Number or Password (use one of your names)!');
+        setError('Check your Admission Number or Password!');
         setIsLoading(false);
       }
     }, 1000);
@@ -147,13 +131,9 @@ export const StudentLogin = () => {
               </div>
 
               <div className="text-xs">
-                <button 
-                  type="button"
-                  onClick={() => setShowResetModal(true)}
-                  className="font-black text-black hover:text-[#FF6321] uppercase underline decoration-4"
-                >
+                <a href="#" className="font-black text-black hover:text-[#FF6321] uppercase underline decoration-4">
                   Help!
-                </button>
+                </a>
               </div>
             </div>
 
@@ -177,12 +157,6 @@ export const StudentLogin = () => {
           </div>
         </motion.div>
         
-        <PasswordResetModal 
-          isOpen={showResetModal} 
-          onClose={() => setShowResetModal(false)} 
-          role="student" 
-        />
-
         <p className="mt-10 text-center text-[10px] font-black text-white uppercase tracking-[0.5em]">
           &copy; 2026 Alakara Student Hub
         </p>

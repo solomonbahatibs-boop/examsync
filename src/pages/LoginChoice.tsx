@@ -6,6 +6,14 @@ import { Button } from '../components/Button';
 export const LoginChoice = () => {
   const portals = [
     {
+      title: 'Super Admin',
+      description: 'System-wide management, school onboarding, and global settings.',
+      icon: ShieldAlert,
+      path: '/super-admin',
+      color: 'bg-kenya-black',
+      hoverColor: 'hover:bg-gray-800',
+    },
+    {
       title: 'Principal Portal',
       description: 'Institutional leadership, staff oversight, and school-wide performance tracking.',
       icon: ShieldCheck,
@@ -31,6 +39,8 @@ export const LoginChoice = () => {
     },
   ];
 
+  const filteredPortals = portals; // Just to keep the grid clean if I wanted to filter, but I'll just update the grid
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'var(--background-kenya-pattern)', backgroundSize: '40px 40px' }} />
@@ -50,7 +60,7 @@ export const LoginChoice = () => {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {portals.map((portal, index) => (
             <motion.div
               key={portal.title}
