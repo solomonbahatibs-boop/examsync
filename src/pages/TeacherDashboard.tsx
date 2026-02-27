@@ -107,6 +107,10 @@ export const TeacherDashboard = () => {
   const [managedClass] = useState<string>(assignedClasses[0] || 'Form 1');
   const [selectedAnalysisExamId, setSelectedAnalysisExamId] = useState('');
   const [selectedAnalysisClass, setSelectedAnalysisClass] = useState('All');
+  const [selectedEntryClass, setSelectedEntryClass] = useState('');
+  const [selectedEntryStream, setSelectedEntryStream] = useState('');
+  const [selectedEntrySubject, setSelectedEntrySubject] = useState('');
+  const [entryMode, setEntryMode] = useState<'individual' | 'bulk'>('individual');
   const [analysisOptions, setAnalysisOptions] = useState({
     showGrades: true,
     showRank: true
@@ -176,6 +180,17 @@ export const TeacherDashboard = () => {
     localStorage.setItem('alakara_students', JSON.stringify(allStudents));
   }, [allStudents]);
 
+  useEffect(() => {
+    if (activeExam && selectedEntrySubject && selectedEntryClass) {
+      const examMarks = marks.filter(m => m.examId === activeExam.id && m.subject === selectedEntrySubject);
+      const marksMap: any = {};
+      examMarks.forEach(m => {
+        marksMap[m.studentId] = m.assessments || {};
+      });
+      setCurrentMarks(marksMap);
+    }
+  }, [activeExam, selectedEntrySubject, selectedEntryClass, marks]);
+
   const [newStudent, setNewStudent] = useState({ name: '', adm: '' });
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
 
@@ -219,13 +234,7 @@ export const TeacherDashboard = () => {
 
   const startMarkEntry = (exam: any) => {
     setActiveExam(exam);
-    // Load existing marks for this exam if any
-    const examMarks = marks.filter(m => m.examId === exam.id);
-    const marksMap: any = {};
-    examMarks.forEach(m => {
-      marksMap[m.studentId] = m.assessments || {};
-    });
-    setCurrentMarks(marksMap);
+    // Marks will be loaded by useEffect when class and subject are selected
   };
 
   const handleMarkChange = (studentId: string, categoryId: string, score: string) => {
@@ -253,8 +262,13 @@ export const TeacherDashboard = () => {
       alert('This exam is locked and cannot be edited.');
       return;
     }
+    
+    if (!selectedEntrySubject) {
+      alert('Please select a subject to save marks.');
+      return;
+    }
 
-    const newMarks = [...marks.filter(m => m.examId !== activeExam.id || m.subject !== 'Mathematics')]; // Assuming primary subject for now
+    const newMarks = [...marks.filter(m => m.examId !== activeExam.id || m.subject !== selectedEntrySubject)];
     
     Object.entries(currentMarks).forEach(([studentId, assessments]: [string, any]) => {
       let total = 0;
@@ -269,10 +283,10 @@ export const TeacherDashboard = () => {
       const grade = gradeObj ? gradeObj.grade : 'E';
 
       newMarks.push({
-        id: `${activeExam.id}-${studentId}-Mathematics`,
+        id: `${activeExam.id}-${studentId}-${selectedEntrySubject}`,
         examId: activeExam.id,
         studentId,
-        subject: 'Mathematics',
+        subject: selectedEntrySubject,
         assessments,
         total,
         percentage,
@@ -282,12 +296,12 @@ export const TeacherDashboard = () => {
     });
 
     setMarks(newMarks);
-    addLog('Save Marks', `Updated marks for ${activeExam.title}`);
+    addLog('Save Marks', `Updated marks for ${activeExam.title} - ${selectedEntrySubject}`);
     alert('Marks saved successfully!');
     
     addNotification({
       title: 'Marks Saved',
-      message: `You have successfully saved marks for "${activeExam.title}".`,
+      message: `You have successfully saved marks for "${activeExam.title}" - ${selectedEntrySubject}.`,
       type: 'success',
       role: 'teacher',
       userId: currentTeacher.id
@@ -723,21 +737,6 @@ export const TeacherDashboard = () => {
                   <div className="flex items-center gap-4">
                     {activeExam.status === 'Active' && (
                       <>
-                        <input 
-                          type="file" 
-                          id="bulk-upload" 
-                          className="hidden" 
-                          accept=".xlsx, .xls, .csv"
-                          onChange={handleBulkUpload}
-                        />
-                        <Button 
-                          variant="secondary" 
-                          onClick={() => document.getElementById('bulk-upload')?.click()}
-                          className="gap-2 rounded-2xl"
-                        >
-                          <Upload className="w-4 h-4" />
-                          Bulk Upload (Excel)
-                        </Button>
                         <Button 
                           variant="ghost" 
                           onClick={downloadMarksTemplate}
@@ -756,11 +755,11 @@ export const TeacherDashboard = () => {
                 </div>
 
                 <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden">
-                  <div className="p-8 border-b border-gray-100 bg-gray-50/50">
+                  <div className="p-8 border-b border-gray-100 bg-gray-50/50 space-y-6">
                     <div className="flex items-center justify-between">
                       <div>
                         <h2 className="text-2xl font-bold text-kenya-black">Student Mark Entry</h2>
-                        <p className="text-gray-500">Subject: Mathematics | Assigned Classes: {assignedClasses.join(', ')}</p>
+                        <p className="text-gray-500">Select class and subject to enter marks.</p>
                       </div>
                       {activeExam.status !== 'Active' && (
                         <div className="flex items-center gap-2 text-blue-600 bg-blue-50 px-4 py-2 rounded-xl font-bold text-sm">
@@ -769,74 +768,155 @@ export const TeacherDashboard = () => {
                         </div>
                       )}
                     </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      <select 
+                        value={selectedEntryClass}
+                        onChange={(e) => setSelectedEntryClass(e.target.value)}
+                        className="px-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                      >
+                        <option value="">Select Class...</option>
+                        {assignedClasses.map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                      <select 
+                        value={selectedEntryStream}
+                        onChange={(e) => setSelectedEntryStream(e.target.value)}
+                        className="px-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                      >
+                        <option value="">Select Stream...</option>
+                        <option value="All">All Streams</option>
+                      </select>
+                      <select 
+                        value={selectedEntrySubject}
+                        onChange={(e) => setSelectedEntrySubject(e.target.value)}
+                        className="px-4 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                      >
+                        <option value="">Select Subject...</option>
+                        {learningAreas.map(la => (
+                          <option key={la} value={la}>{la}</option>
+                        ))}
+                      </select>
+                      <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl p-1">
+                        <button
+                          onClick={() => setEntryMode('individual')}
+                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${entryMode === 'individual' ? 'bg-kenya-green text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                          Individual Entry
+                        </button>
+                        <button
+                          onClick={() => setEntryMode('bulk')}
+                          className={`flex-1 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors ${entryMode === 'bulk' ? 'bg-kenya-green text-white' : 'text-gray-500 hover:bg-gray-50'}`}
+                        >
+                          Bulk Upload
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                          <th className="px-8 py-4">Admission No</th>
-                          <th className="px-8 py-4">Student Name</th>
-                          {assessmentCategories.map(cat => (
-                            <th key={cat.id} className="px-4 py-4 text-center w-32">
-                              {cat.name}
-                              <span className="block text-[8px] opacity-60">Max: {cat.maxScore}</span>
-                            </th>
-                          ))}
-                          <th className="px-8 py-4 text-center">Total</th>
-                          <th className="px-8 py-4">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {allStudents
-                          .filter(s => activeExam.classes.includes(s.class) && assignedClasses.includes(s.class))
-                          .map((student) => {
-                            const studentAssessments = currentMarks[student.id] || {};
-                            let rowTotal = 0;
-                            Object.values(studentAssessments).forEach(val => {
-                              if (val) rowTotal += parseFloat(val as string);
-                            });
+                  {entryMode === 'bulk' ? (
+                    <div className="p-12 text-center space-y-6">
+                      <div className="w-24 h-24 bg-kenya-green/10 rounded-full flex items-center justify-center mx-auto">
+                        <Upload className="w-10 h-10 text-kenya-green" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-kenya-black mb-2">Bulk Upload Marks</h3>
+                        <p className="text-gray-500 max-w-md mx-auto">
+                          Download the template, fill in the marks for all students, and upload the completed Excel file here.
+                        </p>
+                      </div>
+                      <div className="flex justify-center gap-4">
+                        <Button variant="secondary" onClick={downloadMarksTemplate} className="gap-2">
+                          <Download className="w-4 h-4" />
+                          Download Template
+                        </Button>
+                        <input 
+                          type="file" 
+                          id="bulk-upload-main" 
+                          className="hidden" 
+                          accept=".xlsx, .xls, .csv"
+                          onChange={handleBulkUpload}
+                        />
+                        <Button onClick={() => document.getElementById('bulk-upload-main')?.click()} className="gap-2">
+                          <Upload className="w-4 h-4" />
+                          Select File
+                        </Button>
+                      </div>
+                    </div>
+                  ) : selectedEntryClass && selectedEntrySubject ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                            <th className="px-8 py-4">Admission No</th>
+                            <th className="px-8 py-4">Student Name</th>
+                            {assessmentCategories.map(cat => (
+                              <th key={cat.id} className="px-4 py-4 text-center w-32">
+                                {cat.name}
+                                <span className="block text-[8px] opacity-60">Max: {cat.maxScore}</span>
+                              </th>
+                            ))}
+                            <th className="px-8 py-4 text-center">Total</th>
+                            <th className="px-8 py-4">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {allStudents
+                            .filter(s => s.class === selectedEntryClass)
+                            .map((student) => {
+                              const studentAssessments = currentMarks[student.id] || {};
+                              let rowTotal = 0;
+                              Object.values(studentAssessments).forEach(val => {
+                                if (val) rowTotal += parseFloat(val as string);
+                              });
 
-                            return (
-                              <tr key={student.id} className="hover:bg-gray-50/50 transition-colors">
-                                <td className="px-8 py-6 font-mono text-sm text-gray-500">{student.adm}</td>
-                                <td className="px-8 py-6 font-bold text-kenya-black">{student.name}</td>
-                                {assessmentCategories.map(cat => (
-                                  <td key={cat.id} className="px-4 py-6">
-                                    <input 
-                                      type="number"
-                                      min="0"
-                                      max={cat.maxScore}
-                                      value={studentAssessments[cat.id] || ''}
-                                      onChange={(e) => handleMarkChange(student.id, cat.id, e.target.value)}
-                                      disabled={activeExam.status !== 'Active' || activeExam.locked}
-                                      className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-center disabled:opacity-50"
-                                      placeholder="--"
-                                    />
+                              return (
+                                <tr key={student.id} className="hover:bg-gray-50/50 transition-colors">
+                                  <td className="px-8 py-6 font-mono text-sm text-gray-500">{student.adm}</td>
+                                  <td className="px-8 py-6 font-bold text-kenya-black">{student.name}</td>
+                                  {assessmentCategories.map(cat => (
+                                    <td key={cat.id} className="px-4 py-6">
+                                      <input 
+                                        type="number"
+                                        min="0"
+                                        max={cat.maxScore}
+                                        value={studentAssessments[cat.id] || ''}
+                                        onChange={(e) => handleMarkChange(student.id, cat.id, e.target.value)}
+                                        disabled={activeExam.status !== 'Active' || activeExam.locked}
+                                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-center disabled:opacity-50"
+                                        placeholder="--"
+                                      />
+                                    </td>
+                                  ))}
+                                  <td className="px-8 py-6 text-center">
+                                    <span className="text-lg font-black text-kenya-black">{rowTotal}</span>
                                   </td>
-                                ))}
-                                <td className="px-8 py-6 text-center">
-                                  <span className="text-lg font-black text-kenya-black">{rowTotal}</span>
-                                </td>
-                                <td className="px-8 py-6">
-                                  {Object.keys(studentAssessments).length === assessmentCategories.length ? (
-                                    <span className="text-kenya-green flex items-center gap-1 text-xs font-bold uppercase">
-                                      <CheckCircle2 className="w-4 h-4" />
-                                      Complete
-                                    </span>
-                                  ) : (
-                                    <span className="text-gray-300 flex items-center gap-1 text-xs font-bold uppercase">
-                                      <Clock className="w-4 h-4" />
-                                      Partial
-                                    </span>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                      </tbody>
-                    </table>
-                  </div>
+                                  <td className="px-8 py-6">
+                                    {Object.keys(studentAssessments).length === assessmentCategories.length ? (
+                                      <span className="text-kenya-green flex items-center gap-1 text-xs font-bold uppercase">
+                                        <CheckCircle2 className="w-4 h-4" />
+                                        Complete
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-300 flex items-center gap-1 text-xs font-bold uppercase">
+                                        <Clock className="w-4 h-4" />
+                                        Partial
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="p-12 text-center">
+                      <Filter className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                      <p className="text-gray-500 font-medium">Please select a class and subject to enter marks.</p>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             )

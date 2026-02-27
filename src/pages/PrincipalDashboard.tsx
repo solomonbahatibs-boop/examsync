@@ -1388,6 +1388,14 @@ export const PrincipalDashboard = () => {
               Academic Records
             </button>
             <button 
+              onClick={() => setActiveTab('marks')}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all ${isSuspended ? 'opacity-50 cursor-not-allowed' : activeTab === 'marks' ? 'bg-kenya-green text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`} 
+              disabled={isSuspended}
+            >
+              <ClipboardList className="w-5 h-5" />
+              Marks Management
+            </button>
+            <button 
               onClick={() => setActiveTab('settings')}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all ${isSuspended ? 'opacity-50 cursor-not-allowed' : activeTab === 'settings' ? 'bg-kenya-green text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`} 
               disabled={isSuspended}
