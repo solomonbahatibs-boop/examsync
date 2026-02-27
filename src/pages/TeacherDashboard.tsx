@@ -54,7 +54,7 @@ export const TeacherDashboard = () => {
     return saved ? JSON.parse(saved) : [];
   });
   const [currentMarks, setCurrentMarks] = useState<any>({});
-  const [activeTab, setActiveTab] = useState<'exams' | 'analysis' | 'class-management' | 'materials' | 'profile'>('exams');
+  const [activeTab, setActiveTab] = useState<'exams' | 'analysis' | 'class-management' | 'materials' | 'profile' | 'assignments'>('exams');
   const [currentTeacher, setCurrentTeacher] = useState<any>(() => {
     const saved = localStorage.getItem('alakara_current_teacher');
     return saved ? JSON.parse(saved) : { name: 'Teacher', role: 'Class Teacher', assignedClasses: ['Form 1', 'Grade 7'] };
@@ -62,6 +62,35 @@ export const TeacherDashboard = () => {
 
   const [showBulkPreview, setShowBulkPreview] = useState(false);
   const [bulkPreviewData, setBulkPreviewData] = useState<any>(null);
+
+  const [assignments, setAssignments] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_assignments');
+    return saved ? JSON.parse(saved) : [];
+  });
+  
+  const [submissions, setSubmissions] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_submissions');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const [showAddAssignmentModal, setShowAddAssignmentModal] = useState(false);
+  const [newAssignment, setNewAssignment] = useState({
+    title: '',
+    description: '',
+    dueDate: '',
+    maxMarks: 100,
+    class: '',
+    subject: ''
+  });
+  const [selectedAssignment, setSelectedAssignment] = useState<any>(null);
+
+  useEffect(() => {
+    localStorage.setItem('alakara_assignments', JSON.stringify(assignments));
+  }, [assignments]);
+
+  useEffect(() => {
+    localStorage.setItem('alakara_submissions', JSON.stringify(submissions));
+  }, [submissions]);
 
   const [examMaterials, setExamMaterials] = useState<any[]>(() => {
     const saved = localStorage.getItem('alakara_exam_materials');
@@ -602,6 +631,13 @@ export const TeacherDashboard = () => {
               <FileText className="w-5 h-5" />
               Materials
             </button>
+            <button 
+              onClick={() => { setActiveTab('assignments'); setActiveExam(null); setSelectedAssignment(null); }}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all ${activeTab === 'assignments' ? 'bg-kenya-green text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`}
+            >
+              <FileText className="w-5 h-5" />
+              Assignments
+            </button>
             {teacherRole === 'Class Teacher' && (
               <button 
                 onClick={() => { setActiveTab('class-management'); setActiveExam(null); }}
@@ -1108,6 +1144,191 @@ export const TeacherDashboard = () => {
                 </div>
               )}
             </div>
+          ) : activeTab === 'assignments' ? (
+            <div className="space-y-8">
+              {!selectedAssignment ? (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h1 className="text-3xl font-black text-kenya-black uppercase tracking-tight">Assignments</h1>
+                      <p className="text-gray-500">Create and manage assignments for your classes.</p>
+                    </div>
+                    <Button onClick={() => setShowAddAssignmentModal(true)} className="gap-2 rounded-2xl">
+                      <Plus className="w-4 h-4" />
+                      New Assignment
+                    </Button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {assignments.map(assignment => (
+                      <motion.div
+                        key={assignment.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-white p-6 rounded-[2.5rem] border border-gray-100 shadow-sm hover:shadow-xl transition-all cursor-pointer group"
+                        onClick={() => setSelectedAssignment(assignment)}
+                      >
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="p-3 bg-kenya-green/10 rounded-2xl text-kenya-green">
+                            <FileText className="w-6 h-6" />
+                          </div>
+                          <span className="px-3 py-1 bg-gray-100 rounded-xl text-xs font-bold text-gray-600">
+                            {assignment.subject}
+                          </span>
+                        </div>
+                        <h3 className="text-xl font-bold text-kenya-black mb-2 group-hover:text-kenya-green transition-colors">{assignment.title}</h3>
+                        <p className="text-gray-500 text-sm mb-4 line-clamp-2">{assignment.description}</p>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-bold text-gray-600">{assignment.class}</span>
+                          <span className="text-gray-400">Due: {new Date(assignment.dueDate).toLocaleDateString()}</span>
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center text-sm">
+                          <span className="text-gray-500">Max Marks: <span className="font-bold text-kenya-black">{assignment.maxMarks}</span></span>
+                          <span className="text-kenya-green font-bold">
+                            {submissions.filter(s => s.assignmentId === assignment.id).length} Submissions
+                          </span>
+                        </div>
+                      </motion.div>
+                    ))}
+                    {assignments.length === 0 && (
+                      <div className="col-span-full py-20 text-center bg-white rounded-[3rem] border-4 border-dashed border-gray-100">
+                        <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                        <p className="text-xl font-bold text-gray-400 uppercase tracking-tight">No assignments created yet</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <motion.div 
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="space-y-8"
+                >
+                  <div className="flex items-center justify-between">
+                    <button 
+                      onClick={() => setSelectedAssignment(null)}
+                      className="flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-kenya-black transition-colors"
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                      Back to Assignments
+                    </button>
+                    <div className="flex items-center gap-4">
+                      <Button 
+                        variant="ghost" 
+                        onClick={() => {
+                          if (window.confirm('Are you sure you want to delete this assignment?')) {
+                            setAssignments(assignments.filter(a => a.id !== selectedAssignment.id));
+                            setSubmissions(submissions.filter(s => s.assignmentId !== selectedAssignment.id));
+                            setSelectedAssignment(null);
+                          }
+                        }}
+                        className="gap-2 rounded-2xl text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Delete Assignment
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-[2.5rem] border border-gray-100 shadow-xl overflow-hidden">
+                    <div className="p-8 border-b border-gray-100 bg-gray-50/50">
+                      <div className="flex items-center justify-between mb-4">
+                        <div>
+                          <h2 className="text-2xl font-bold text-kenya-black">{selectedAssignment.title}</h2>
+                          <p className="text-gray-500">{selectedAssignment.subject} | {selectedAssignment.class}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-gray-500">Due Date</p>
+                          <p className="font-bold text-kenya-black">{new Date(selectedAssignment.dueDate).toLocaleDateString()}</p>
+                        </div>
+                      </div>
+                      <p className="text-gray-600">{selectedAssignment.description}</p>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="bg-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                            <th className="px-8 py-4">Student</th>
+                            <th className="px-8 py-4">Submission Date</th>
+                            <th className="px-8 py-4">Status</th>
+                            <th className="px-8 py-4 text-center">Marks (/{selectedAssignment.maxMarks})</th>
+                            <th className="px-8 py-4">Feedback</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {allStudents
+                            .filter(s => s.class === selectedAssignment.class)
+                            .map(student => {
+                              const submission = submissions.find(s => s.studentId === student.id && s.assignmentId === selectedAssignment.id);
+                              return (
+                                <tr key={student.id} className="hover:bg-gray-50/50 transition-colors">
+                                  <td className="px-8 py-6">
+                                    <p className="font-bold text-kenya-black">{student.name}</p>
+                                    <p className="font-mono text-xs text-gray-500">{student.adm}</p>
+                                  </td>
+                                  <td className="px-8 py-6 text-sm text-gray-600">
+                                    {submission ? new Date(submission.submittedAt).toLocaleDateString() : '--'}
+                                  </td>
+                                  <td className="px-8 py-6">
+                                    {submission ? (
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-kenya-green/10 text-kenya-green uppercase">
+                                        Submitted
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-gray-100 text-gray-500 uppercase">
+                                        Pending
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-8 py-6 text-center">
+                                    {submission ? (
+                                      <input 
+                                        type="number"
+                                        min="0"
+                                        max={selectedAssignment.maxMarks}
+                                        value={submission.marks || ''}
+                                        onChange={(e) => {
+                                          const newSubmissions = [...submissions];
+                                          const idx = newSubmissions.findIndex(s => s.id === submission.id);
+                                          newSubmissions[idx].marks = e.target.value;
+                                          setSubmissions(newSubmissions);
+                                        }}
+                                        className="w-20 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-center"
+                                        placeholder="--"
+                                      />
+                                    ) : (
+                                      <span className="text-gray-400">--</span>
+                                    )}
+                                  </td>
+                                  <td className="px-8 py-6">
+                                    {submission ? (
+                                      <input 
+                                        type="text"
+                                        value={submission.feedback || ''}
+                                        onChange={(e) => {
+                                          const newSubmissions = [...submissions];
+                                          const idx = newSubmissions.findIndex(s => s.id === submission.id);
+                                          newSubmissions[idx].feedback = e.target.value;
+                                          setSubmissions(newSubmissions);
+                                        }}
+                                        className="w-full px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 text-sm"
+                                        placeholder="Add feedback..."
+                                      />
+                                    ) : (
+                                      <span className="text-gray-400">--</span>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </div>
           ) : activeTab === 'materials' ? (
             <div className="space-y-8">
               <div className="flex items-center justify-between">
@@ -1258,7 +1479,125 @@ export const TeacherDashboard = () => {
             </div>
           )}
         </div>
-        {/* Add Material Modal */}
+        {/* Add Assignment Modal */}
+      {showAddAssignmentModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-[2.5rem] p-8 max-w-md w-full shadow-2xl"
+          >
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-2xl font-black text-kenya-black">New Assignment</h2>
+              <button 
+                onClick={() => setShowAddAssignmentModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const assignment = {
+                id: Math.random().toString(36).substr(2, 9),
+                ...newAssignment,
+                teacherId: currentTeacher.id,
+                createdAt: new Date().toISOString()
+              };
+              setAssignments([assignment, ...assignments]);
+              setShowAddAssignmentModal(false);
+              setNewAssignment({ title: '', description: '', dueDate: '', maxMarks: 100, class: assignedClasses[0] || '', subject: learningAreas[0] || '' });
+            }} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-gray-700">Assignment Title</label>
+                <input 
+                  type="text"
+                  required
+                  value={newAssignment.title}
+                  onChange={(e) => setNewAssignment({...newAssignment, title: e.target.value})}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                  placeholder="e.g. Algebra Homework"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-bold text-gray-700">Description</label>
+                <textarea 
+                  required
+                  value={newAssignment.description}
+                  onChange={(e) => setNewAssignment({...newAssignment, description: e.target.value})}
+                  className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 h-24 resize-none"
+                  placeholder="Instructions for the assignment..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-700">Class</label>
+                  <select 
+                    required
+                    value={newAssignment.class}
+                    onChange={(e) => setNewAssignment({...newAssignment, class: e.target.value})}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                  >
+                    <option value="">Select Class</option>
+                    {assignedClasses.map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-700">Subject</label>
+                  <select 
+                    required
+                    value={newAssignment.subject}
+                    onChange={(e) => setNewAssignment({...newAssignment, subject: e.target.value})}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                  >
+                    <option value="">Select Subject</option>
+                    {learningAreas.map(la => (
+                      <option key={la} value={la}>{la}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-700">Due Date</label>
+                  <input 
+                    type="date"
+                    required
+                    value={newAssignment.dueDate}
+                    onChange={(e) => setNewAssignment({...newAssignment, dueDate: e.target.value})}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-gray-700">Max Marks</label>
+                  <input 
+                    type="number"
+                    required
+                    min="1"
+                    value={newAssignment.maxMarks}
+                    onChange={(e) => setNewAssignment({...newAssignment, maxMarks: parseInt(e.target.value)})}
+                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                  />
+                </div>
+              </div>
+              
+              <div className="pt-4 flex gap-4">
+                <Button type="button" variant="secondary" onClick={() => setShowAddAssignmentModal(false)} className="flex-1">
+                  Cancel
+                </Button>
+                <Button type="submit" className="flex-1">
+                  Create
+                </Button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Add Material Modal */}
         {showAddMaterialModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-kenya-black/60 backdrop-blur-sm">
             <motion.div 
