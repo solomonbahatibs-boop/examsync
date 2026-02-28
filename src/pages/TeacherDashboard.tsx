@@ -241,14 +241,34 @@ export const TeacherDashboard = () => {
   });
 
   useEffect(() => {
-    const loadExams = () => {
-      const saved = localStorage.getItem('alakara_exams');
-      if (saved) {
-        setExams(JSON.parse(saved));
+    const loadData = () => {
+      const savedExams = localStorage.getItem('alakara_exams');
+      if (savedExams) {
+        setExams(JSON.parse(savedExams));
+      }
+
+      const savedStudents = localStorage.getItem('alakara_students');
+      if (savedStudents) {
+        setAllStudents(JSON.parse(savedStudents));
+      }
+
+      const savedClasses = localStorage.getItem('alakara_classes');
+      if (savedClasses) {
+        setClasses(JSON.parse(savedClasses));
+      }
+
+      const savedStreams = localStorage.getItem('alakara_streams');
+      if (savedStreams) {
+        setStreams(JSON.parse(savedStreams));
+      }
+
+      const savedTeacher = localStorage.getItem('alakara_current_teacher');
+      if (savedTeacher) {
+        setCurrentTeacher(JSON.parse(savedTeacher));
       }
     };
-    loadExams();
-    const interval = setInterval(loadExams, 2000);
+    loadData();
+    const interval = setInterval(loadData, 2000);
     return () => clearInterval(interval);
   }, []);
 
@@ -262,10 +282,10 @@ export const TeacherDashboard = () => {
 
   const filteredStudents = activeExam ? allStudents.filter(s => {
     const selectedClass = classes.find(c => c.id === entryConfig.classId);
-    const matchesClass = !entryConfig.classId || s.class === selectedClass?.name;
+    const matchesClass = !entryConfig.classId || s.class?.trim() === selectedClass?.name?.trim();
     const matchesStream = !entryConfig.streamId || s.streamId === entryConfig.streamId;
-    const classInExam = activeExam.classes.includes(s.class);
-    const classInAssignments = assignedClasses.includes(s.class);
+    const classInExam = activeExam.classes.some((c: string) => c.trim() === s.class?.trim());
+    const classInAssignments = assignedClasses.some((c: string) => c.trim() === s.class?.trim());
     return matchesClass && matchesStream && classInExam && classInAssignments;
   }) : [];
 
@@ -769,7 +789,7 @@ export const TeacherDashboard = () => {
                         <span className="text-[10px] font-black uppercase tracking-wider">
                           {allStudents.filter(s => {
                             const className = classes.find(c => c.id === entryConfig.classId)?.name;
-                            const matchesClass = s.class === className;
+                            const matchesClass = s.class?.trim() === className?.trim();
                             const matchesStream = !entryConfig.streamId || s.streamId === entryConfig.streamId;
                             return matchesClass && matchesStream;
                           }).length} Students Found
@@ -839,6 +859,23 @@ export const TeacherDashboard = () => {
                         onClick={async () => {
                           setIsFetchingStudents(true);
                           await new Promise(resolve => setTimeout(resolve, 800));
+                          
+                          // Actually reload from localStorage
+                          const savedStudents = localStorage.getItem('alakara_students');
+                          if (savedStudents) {
+                            setAllStudents(JSON.parse(savedStudents));
+                          }
+                          
+                          const savedClasses = localStorage.getItem('alakara_classes');
+                          if (savedClasses) {
+                            setClasses(JSON.parse(savedClasses));
+                          }
+
+                          const savedStreams = localStorage.getItem('alakara_streams');
+                          if (savedStreams) {
+                            setStreams(JSON.parse(savedStreams));
+                          }
+
                           setIsFetchingStudents(false);
                           alert('Student list synchronized for ' + entryConfig.subject);
                         }}
@@ -1404,7 +1441,7 @@ export const TeacherDashboard = () => {
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {allStudents
-                        .filter(s => s.class === managedClass?.name)
+                        .filter(s => s.class?.trim() === managedClass?.name?.trim())
                         .map((student) => (
                           <tr key={student.id} className="hover:bg-gray-50/50 transition-colors">
                             <td className="px-8 py-6 font-mono text-sm text-gray-500">{student.adm}</td>

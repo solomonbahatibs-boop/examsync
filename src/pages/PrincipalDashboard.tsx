@@ -1857,6 +1857,49 @@ export const PrincipalDashboard = () => {
                   </div>
                 </div>
 
+                {/* Quick Actions */}
+                <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm">
+                  <h3 className="text-xl font-bold text-kenya-black mb-6 uppercase tracking-tight">Quick Actions</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <button 
+                      onClick={() => { setActiveTab('staff'); setShowAddStaffModal(true); }}
+                      className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-kenya-green/5 hover:bg-kenya-green/10 transition-colors group"
+                    >
+                      <div className="p-3 bg-kenya-green text-white rounded-xl group-hover:scale-110 transition-transform">
+                        <UserPlus className="w-6 h-6" />
+                      </div>
+                      <span className="text-sm font-bold text-kenya-black">Add Staff</span>
+                    </button>
+                    <button 
+                      onClick={() => { setActiveTab('students'); setShowAddStudentModal(true); }}
+                      className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-blue-50 hover:bg-blue-100 transition-colors group"
+                    >
+                      <div className="p-3 bg-blue-600 text-white rounded-xl group-hover:scale-110 transition-transform">
+                        <UserCheck className="w-6 h-6" />
+                      </div>
+                      <span className="text-sm font-bold text-kenya-black">Add Student</span>
+                    </button>
+                    <button 
+                      onClick={() => { setActiveTab('academic'); setAcademicSubTab('create-exam'); }}
+                      className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-amber-50 hover:bg-amber-100 transition-colors group"
+                    >
+                      <div className="p-3 bg-amber-600 text-white rounded-xl group-hover:scale-110 transition-transform">
+                        <ClipboardList className="w-6 h-6" />
+                      </div>
+                      <span className="text-sm font-bold text-kenya-black">New Exam</span>
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('settings')}
+                      className="flex flex-col items-center gap-3 p-6 rounded-2xl bg-purple-50 hover:bg-purple-100 transition-colors group"
+                    >
+                      <div className="p-3 bg-purple-600 text-white rounded-xl group-hover:scale-110 transition-transform">
+                        <Settings className="w-6 h-6" />
+                      </div>
+                      <span className="text-sm font-bold text-kenya-black">Settings</span>
+                    </button>
+                  </div>
+                </div>
+
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
                   <h3 className="text-xl font-bold text-kenya-black mb-6">Class Performance Comparison</h3>
                   <div className="h-80">
@@ -1953,10 +1996,14 @@ export const PrincipalDashboard = () => {
                               onChange={(e) => updateStaffRole(member.id, e.target.value)}
                               className="bg-gray-50 border border-gray-200 rounded-lg text-sm px-2 py-1 focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
                             >
+                              <option value="Principal">Principal</option>
+                              <option value="Deputy Principal">Deputy Principal</option>
                               <option value="Teacher">Teacher</option>
                               <option value="Head of Science">Head of Science</option>
                               <option value="Head of Arts">Head of Arts</option>
                               <option value="Senior Teacher">Senior Teacher</option>
+                              <option value="Bursar">Bursar</option>
+                              <option value="Secretary">Secretary</option>
                               <option value="Admin">Admin</option>
                             </select>
                           </td>
@@ -3621,11 +3668,15 @@ export const PrincipalDashboard = () => {
                     onChange={(e) => setNewStaff({...newStaff, role: e.target.value})}
                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
                   >
+                    <option value="Principal">Principal</option>
+                    <option value="Deputy Principal">Deputy Principal</option>
                     <option value="Teacher">Teacher</option>
                     <option value="Class Teacher">Class Teacher</option>
                     <option value="Head of Science">Head of Science</option>
                     <option value="Head of Arts">Head of Arts</option>
                     <option value="Senior Teacher">Senior Teacher</option>
+                    <option value="Bursar">Bursar</option>
+                    <option value="Secretary">Secretary</option>
                     <option value="Admin">Admin</option>
                   </select>
                 </div>
