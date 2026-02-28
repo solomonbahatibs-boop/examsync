@@ -2107,14 +2107,6 @@ export const PrincipalDashboard = () => {
                                 <td className="px-6 py-4 text-right">
                                   <div className="flex items-center justify-end gap-2">
                                     <button 
-                                      onClick={() => openEditMarks(student)}
-                                      className="flex items-center gap-1 px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg text-xs font-bold hover:bg-kenya-green hover:text-white transition-all"
-                                      title="Manage Marks"
-                                    >
-                                      <ClipboardList className="w-3 h-3" />
-                                      Marks
-                                    </button>
-                                    <button 
                                       onClick={() => openEditStudent(student)}
                                       className="p-2 text-gray-400 hover:text-kenya-green transition-colors"
                                       title="Edit Student"
