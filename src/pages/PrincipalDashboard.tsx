@@ -12,11 +12,12 @@ import {
   ShieldAlert,
   Phone,
   Edit,
-  Edit3,
   AlertTriangle,
   Plus,
   Trash2,
   UserPlus,
+  User,
+  Camera,
   Mail,
   ShieldCheck,
   Check,
@@ -38,7 +39,10 @@ import {
   Building2,
   Image as ImageIcon,
   Quote,
-  Trophy
+  Trophy,
+  Edit3,
+  Printer,
+  Save
 } from 'lucide-react';
 import { NotificationBell, addNotification } from '../components/NotificationBell';
 import { useNavigate } from 'react-router-dom';
@@ -64,6 +68,10 @@ import {
 import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import JSZip from 'jszip';
+
+import { supabaseService } from '../services/supabaseService';
+import { Database } from '../lib/database.types';
 
 export const PrincipalDashboard = () => {
   const navigate = useNavigate();
@@ -71,17 +79,11 @@ export const PrincipalDashboard = () => {
   const [isSuspended, setIsSuspended] = useState(false);
   const [daysToExpiry, setDaysToExpiry] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'staff' | 'students' | 'academic' | 'settings' | 'classes'>('dashboard');
-  const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'edit-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports' | 'results-processing' | 'academic-settings'>('overview');
+  const [academicSubTab, setAcademicSubTab] = useState<'overview' | 'create-exam' | 'learning-area' | 'grading' | 'analysis' | 'reports' | 'results-processing' | 'academic-settings' | 'merit-list'>('overview');
   const [topXCount, setTopXCount] = useState(10);
   const [selectedProcessingClass, setSelectedProcessingClass] = useState('All');
   const [selectedAnalysisClass, setSelectedAnalysisClass] = useState('All');
   const [selectedProcessingExamId, setSelectedProcessingExamId] = useState('');
-  
-  const [selectedEditClass, setSelectedEditClass] = useState('');
-  const [selectedEditSubject, setSelectedEditSubject] = useState('');
-  const [selectedEditExamId, setSelectedEditExamId] = useState('');
-  const [editMarksData, setEditMarksData] = useState<any[]>([]);
-  const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
   
   const handleBulkMarksUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -166,16 +168,260 @@ export const PrincipalDashboard = () => {
   const [showAddStudentModal, setShowAddStudentModal] = useState(false);
   const [showAddClassModal, setShowAddClassModal] = useState(false);
   const [showReportPreview, setShowReportPreview] = useState(false);
+  const [selectedEditClass, setSelectedEditClass] = useState('');
+  const [selectedEditSubject, setSelectedEditSubject] = useState('');
+  const [selectedEditExamId, setSelectedEditExamId] = useState('');
+  const [editExamConfig, setEditExamConfig] = useState({ weighting: 100, maxMarks: 100 });
+  const [showEditConfirmation, setShowEditConfirmation] = useState(false);
+
+  const handleSaveExamEdit = async () => {
+    try {
+      const exam = exams.find(e => e.id === selectedEditExamId);
+      if (!exam) return;
+
+      // Update Supabase
+      await supabaseService.updateExam(selectedEditExamId, {
+        weighting: editExamConfig.weighting
+      });
+
+      // Update Local State
+      const updatedExams = exams.map(e => 
+        e.id === selectedEditExamId ? { ...e, weighting: editExamConfig.weighting } : e
+      );
+      setExams(updatedExams);
+      
+      addLog('Edit Exam', `Updated configuration for ${exam.title}`);
+      setShowEditConfirmation(false);
+      alert('Exam configuration updated successfully!');
+    } catch (error: any) {
+      alert('Error saving exam edit: ' + error.message);
+    }
+  };
+  const downloadReportPDF = (studentId?: string, returnDoc: boolean = false) => {
+    const targetId = studentId || reportConfig.selectedStudentId;
+    const student = students.find(s => s.id === targetId);
+    if (!student) return;
+
+    const doc = new jsPDF();
+    const pageWidth = doc.internal.pageSize.width;
+    const margin = 10;
+    
+    // Helper for centered text
+    const centerText = (text: string, y: number, size: number, style: 'normal' | 'bold' = 'normal') => {
+      doc.setFont('helvetica', style);
+      doc.setFontSize(size);
+      doc.text(text, pageWidth / 2, y, { align: 'center' });
+    };
+
+    // 1. Header Border
+    doc.setDrawColor(0);
+    doc.setLineWidth(0.5);
+    doc.rect(margin, margin, pageWidth - (margin * 2), 40);
+
+    // 2. Logo (Placeholder)
+    doc.setFontSize(8);
+    doc.text('LOGO', margin + 10, margin + 20);
+
+    // 3. School Header Info
+    centerText(schoolSettings.name || school.name, margin + 10, 16, 'bold');
+    centerText(`P.O BOX ${schoolSettings.address || '923-50403'}`, margin + 18, 10);
+    centerText(`Website: ${schoolSettings.website || 'www.school.ac.ke'}`, margin + 24, 10);
+    
+    doc.setLineWidth(0.5);
+    doc.line(pageWidth / 2 - 30, margin + 28, pageWidth / 2 + 30, margin + 28);
+    centerText('REPORT FORM', margin + 34, 12, 'bold');
+    doc.line(pageWidth / 2 - 30, margin + 36, pageWidth / 2 + 30, margin + 36);
+
+    // 4. Student Details Section
+    const detailsY = margin + 45;
+    doc.rect(margin, detailsY, pageWidth - (margin * 2), 25);
+    
+    const classStudents = students.filter(s => s.class === student.class);
+    const examId = reportConfig.selectedExamIds[0];
+    const examMarks = marks.filter(m => m.examId === examId);
+    
+    const rankings = classStudents.map(s => {
+      const sMarks = examMarks.filter(m => m.studentId === s.id);
+      const total = sMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+      return { id: s.id, total };
+    }).sort((a, b) => b.total - a.total);
+    const classPos = rankings.findIndex(r => r.id === student.id) + 1;
+
+    const overallRankings = students.map(s => {
+      const sMarks = examMarks.filter(m => m.studentId === s.id);
+      const total = sMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+      return { id: s.id, total };
+    }).sort((a, b) => b.total - a.total);
+    const overallPos = overallRankings.findIndex(r => r.id === student.id) + 1;
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Adm No : ${student.adm}`, margin + 5, detailsY + 7);
+    doc.text(`Full Name : ${student.name.toUpperCase()}`, margin + 60, detailsY + 7);
+    doc.text(`Kpsea : `, margin + 140, detailsY + 7);
+
+    doc.text(`UPI No : A23WERTYST`, margin + 5, detailsY + 14);
+    doc.text(`Grade : ${student.class} A 2026`, margin + 60, detailsY + 14);
+    doc.text(`Term : 1`, margin + 140, detailsY + 14);
+
+    doc.text(`House : `, margin + 5, detailsY + 21);
+    doc.text(`Rank : ${classPos} (out of ${classStudents.length})`, margin + 60, detailsY + 21);
+    doc.text(`Rank (Overall) : ${overallPos} (out of ${students.length})`, margin + 120, detailsY + 21);
+
+    // 5. Performance Table
+    const tableHead = [['LEARNING AREA', 'Exam 1 opener\nScore | Grade', 'Score', 'Grade', '%', 'Grd', 'Learning\nArea Rank', 'Remarks', 'Teacher']];
+    const tableBody = learningAreas.map(subject => {
+      const mark = marks.find(m => m.studentId === student.id && m.examId === examId && m.subject === subject);
+      const score = mark ? parseFloat(mark.score) : null;
+      const grade = score !== null ? gradingSystem.find(g => score >= g.min && score <= g.max)?.grade || '--' : '--';
+      
+      const subjectRankings = classStudents.map(s => {
+        const sMark = marks.find(m => m.studentId === s.id && m.examId === examId && m.subject === subject);
+        return { id: s.id, score: sMark ? parseFloat(sMark.score) : 0 };
+      }).sort((a, b) => b.score - a.score);
+      const subRank = subjectRankings.findIndex(r => r.id === student.id) + 1;
+
+      const teacher = staff.find(t => t.assignedSubjects?.includes(subject) && t.assignedClasses?.includes(student.class))?.name.split(' ')[0] || 'N/A';
+
+      return [
+        subject.toUpperCase(),
+        score !== null ? `${score} | ${grade}` : '',
+        '',
+        '',
+        score !== null ? `${score}%` : '',
+        grade,
+        score !== null ? `${subRank}/${classStudents.length}` : '',
+        score !== null ? (score >= 50 ? 'Meeting Expectations' : 'Approaching Expectations') : '',
+        teacher
+      ];
+    });
+
+    autoTable(doc, {
+      startY: detailsY + 30,
+      head: tableHead,
+      body: tableBody,
+      theme: 'grid',
+      headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], fontSize: 7, halign: 'center' },
+      styles: { fontSize: 7, cellPadding: 2 },
+      columnStyles: {
+        0: { cellWidth: 35 },
+        1: { cellWidth: 20 },
+        7: { cellWidth: 35 }
+      }
+    });
+
+    // 6. Summary Row
+    const finalY = (doc as any).lastAutoTable.finalY;
+    const studentMarks = marks.filter(m => m.studentId === student.id && m.examId === examId);
+    const total = studentMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+    const avg = studentMarks.length > 0 ? total / studentMarks.length : 0;
+    const overallGrade = gradingSystem.find(g => avg >= g.min && avg <= g.max)?.grade || '--';
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.rect(margin, finalY, pageWidth - (margin * 2), 10);
+    doc.text(`Total Marks : ${total.toFixed(0)} (out of ${learningAreas.length * 100})`, margin + 5, finalY + 7);
+    doc.text(`Average Marks : ${avg.toFixed(0)} ${overallGrade}`, margin + 80, finalY + 7);
+    doc.text(`Value Added : --`, margin + 140, finalY + 7);
+
+    // 7. Progressive Summary
+    const summaryY = finalY + 15;
+    doc.setFontSize(10);
+    doc.text('PROGRESSIVE SUMMARY', pageWidth / 2 + 20, summaryY + 5, { align: 'center' });
+    
+    autoTable(doc, {
+      startY: summaryY + 8,
+      margin: { left: pageWidth / 2 - 10 },
+      head: [
+        ['', 'GRADE 7', '', '', 'GRADE 8', '', '', 'GRADE 9', '', ''],
+        ['', 'T1', 'T2', 'T3', 'T1', 'T2', 'T3', 'T1', 'T2', 'T3']
+      ],
+      body: [
+        ['Marks', '', '', '', '', '', '', total.toFixed(0), '', ''],
+        ['Mean score', '', '', '', '', '', '', avg.toFixed(0), '', ''],
+        ['Performance Level', '', '', '', '', '', '', overallGrade, '', ''],
+        ['Points', '', '', '', '', '', '', total.toFixed(0), '', ''],
+        ['Position', '', '', '', '', '', '', classPos.toString(), '', '']
+      ],
+      theme: 'grid',
+      headStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontSize: 6, halign: 'center' },
+      styles: { fontSize: 6, cellPadding: 1, halign: 'center' }
+    });
+
+    // 8. Remarks & Footer
+    const remarksY = (doc as any).lastAutoTable.finalY + 10;
+    doc.setFontSize(8);
+    doc.text('GRADE TEACHER: ____________________________________________________________________', margin, remarksY);
+    doc.text('PRINCIPAL: _________________________________________________________________________', margin, remarksY + 15);
+    
+    doc.text(`Parent's Signature: _________________________________________________________________`, margin, remarksY + 30);
+    doc.text(`Next Term Begins On: Thursday, 26 March 2026`, margin, remarksY + 40);
+    doc.text(`Print Date: ${new Date().toLocaleDateString()}`, pageWidth - margin - 40, remarksY + 40);
+    
+    centerText(schoolSettings.motto || 'STRIVE FOR EXCELLENCE', remarksY + 50, 10, 'bold');
+
+    if (returnDoc) return doc;
+    doc.save(`${student.name}_Report_Card.pdf`);
+  };
+
+  const generateAllClassReports = async () => {
+    const className = reportConfig.selectedClass;
+    const examId = reportConfig.selectedExamIds[0];
+    if (className === 'All' || !examId) {
+      alert('Please select a specific class and an examination.');
+      return;
+    }
+
+    const classStudents = students.filter(s => s.class === className);
+    if (classStudents.length === 0) {
+      alert('No students found in this class.');
+      return;
+    }
+
+    const zip = new JSZip();
+    const exam = exams.find(e => e.id === examId);
+    
+    addNotification({
+      title: 'Batch Generation',
+      message: `Starting batch report generation for ${className}...`,
+      type: 'info',
+      role: 'principal',
+      userId: 'admin'
+    });
+
+    for (const student of classStudents) {
+      const doc = downloadReportPDF(student.id, true) as jsPDF;
+      if (doc) {
+        const pdfBlob = doc.output('blob');
+        zip.file(`${student.adm}_${student.name.replace(/\s+/g, '_')}.pdf`, pdfBlob);
+      }
+    }
+
+    const content = await zip.generateAsync({ type: 'blob' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(content);
+    link.download = `${className}_${exam?.title}_Reports.zip`;
+    link.click();
+    
+    addNotification({
+      title: 'Batch Complete',
+      message: `Batch report generation for ${className} complete!`,
+      type: 'success',
+      role: 'principal',
+      userId: 'admin'
+    });
+  };
+
   const [students, setStudents] = useState<any[]>(() => {
     const saved = localStorage.getItem('alakara_students');
     if (saved) return JSON.parse(saved);
     return [
-      { id: '1', name: 'Alice Wanjiku', adm: 'ADM-2024-001', class: 'Form 1', status: 'Active' },
-      { id: '2', name: 'Bob Otieno', adm: 'ADM-2024-002', class: 'Form 2', status: 'Active' },
+      { id: '1', name: 'Alice Wanjiku', adm: 'ADM-2024-001', class: 'Form 1', status: 'Active', gender: 'Female', profile_image: null },
+      { id: '2', name: 'Bob Otieno', adm: 'ADM-2024-002', class: 'Form 2', status: 'Active', gender: 'Male', profile_image: null },
     ];
   });
 
-  const [newStudent, setNewStudent] = useState({ name: '', adm: '', class: 'Form 1' });
+  const [newStudent, setNewStudent] = useState({ name: '', adm: '', class: 'Form 1', streamId: '', gender: 'Male', profile_image: null as string | null });
   const [editingStudent, setEditingStudent] = useState<any>(null);
 
   const [classes, setClasses] = useState<any[]>(() => {
@@ -190,7 +436,7 @@ export const PrincipalDashboard = () => {
       { id: '6', name: 'Grade 8', teacherId: '', capacity: 40 },
     ];
   });
-  const [newClass, setNewClass] = useState({ name: '', teacherId: '', capacity: 40 });
+  const [newClass, setNewClass] = useState({ name: '', teacherId: '', capacity: 40, streams: [] as string[] });
   const [editingClass, setEditingClass] = useState<any>(null);
 
   useEffect(() => {
@@ -208,82 +454,6 @@ export const PrincipalDashboard = () => {
   const [showEditMarksModal, setShowEditMarksModal] = useState(false);
   const [selectedMarksStudent, setSelectedMarksStudent] = useState<any>(null);
   const [editingMarks, setEditingMarks] = useState<any>({}); // {examId: score}
-
-  const loadEditMarksData = () => {
-    if (!selectedEditClass || !selectedEditSubject || !selectedEditExamId) return;
-    
-    const classStudents = students.filter(s => s.class === selectedEditClass);
-    const data = classStudents.map(student => {
-      const mark = marks.find(m => m.studentId === student.id && m.examId === selectedEditExamId && m.subject === selectedEditSubject);
-      return {
-        studentId: student.id,
-        adm: student.adm,
-        name: student.name,
-        score: mark ? mark.score : ''
-      };
-    });
-    setEditMarksData(data);
-  };
-
-  useEffect(() => {
-    loadEditMarksData();
-  }, [selectedEditClass, selectedEditSubject, selectedEditExamId, marks]);
-
-  const handleEditMarkChange = (studentId: string, score: string) => {
-    setEditMarksData(prev => prev.map(d => d.studentId === studentId ? { ...d, score } : d));
-  };
-
-  const [logs, setLogs] = useState<any[]>(() => {
-    const saved = localStorage.getItem('alakara_audit_trail');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const addLog = (action: string, details: string) => {
-    const newLog = {
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      user: 'Principal',
-      action,
-      details
-    };
-    const updatedLogs = [newLog, ...logs].slice(0, 100);
-    setLogs(updatedLogs);
-    localStorage.setItem('alakara_audit_trail', JSON.stringify(updatedLogs));
-  };
-
-  const saveEditedMarks = () => {
-    const newMarks = [...marks];
-    let changesMade = false;
-    editMarksData.forEach(data => {
-      if (data.score !== '') {
-        const markIdx = newMarks.findIndex(m => m.studentId === data.studentId && m.examId === selectedEditExamId && m.subject === selectedEditSubject);
-        const markData = {
-          id: Math.random().toString(36).substr(2, 9),
-          examId: selectedEditExamId,
-          studentId: data.studentId,
-          score: data.score,
-          subject: selectedEditSubject,
-          updatedAt: new Date().toISOString()
-        };
-        if (markIdx > -1) {
-          if (newMarks[markIdx].score !== data.score) {
-            newMarks[markIdx] = markData;
-            changesMade = true;
-          }
-        } else {
-          newMarks.push(markData);
-          changesMade = true;
-        }
-      }
-    });
-    setMarks(newMarks);
-    setShowEditConfirmModal(false);
-    if (changesMade) {
-      const exam = exams.find(e => e.id === selectedEditExamId);
-      addLog('Edit Marks', `Edited marks for ${selectedEditClass} - ${selectedEditSubject} in ${exam?.title}`);
-    }
-    alert('Marks updated successfully!');
-  };
 
   useEffect(() => {
     localStorage.setItem('alakara_marks', JSON.stringify(marks));
@@ -399,18 +569,62 @@ export const PrincipalDashboard = () => {
   useEffect(() => {
     localStorage.setItem('alakara_exams', JSON.stringify(exams));
   }, [exams]);
+  const [streams, setStreams] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_streams');
+    if (saved) return JSON.parse(saved);
+    return [
+      { id: 's1', classId: '1', name: 'A' },
+      { id: 's2', classId: '1', name: 'B' },
+      { id: 's3', classId: '2', name: 'East' },
+      { id: 's4', classId: '2', name: 'West' },
+    ];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('alakara_streams', JSON.stringify(streams));
+  }, [streams]);
+
   const [staff, setStaff] = useState<any[]>(() => {
     const saved = localStorage.getItem('alakara_staff');
     if (saved) return JSON.parse(saved);
     return [
-      { id: '1', name: 'John Kamau', email: 'j.kamau@alakara.ac.ke', role: 'Head of Science', status: 'Active', username: 'j.kamau@alakara.ac.ke', password: 'password123', mustChangePassword: true, assignedSubjects: ['Science', 'Biology'], assignedClasses: ['Form 1', 'Form 2', 'Grade 7'] },
-      { id: '2', name: 'Sarah Anyango', email: 's.anyango@alakara.ac.ke', role: 'Mathematics Teacher', status: 'Active', username: 's.anyango@alakara.ac.ke', password: 'password123', mustChangePassword: true, assignedSubjects: ['Mathematics'], assignedClasses: ['Form 1', 'Form 2', 'Grade 7'] },
-      { id: '3', name: 'David Omondi', email: 'd.omondi@alakara.ac.ke', role: 'History Teacher', status: 'Active', username: 'd.omondi@alakara.ac.ke', password: 'password123', mustChangePassword: true, assignedSubjects: ['Social Studies', 'CRE'], assignedClasses: ['Form 1', 'Form 2', 'Grade 7'] },
-      { id: '4', name: 'Mary Wambui', email: 'm.wambui@alakara.ac.ke', role: 'English Teacher', status: 'Active', username: 'm.wambui@alakara.ac.ke', password: 'password123', mustChangePassword: true, assignedSubjects: ['English', 'Kiswahili'], assignedClasses: ['Form 1', 'Form 2', 'Grade 7'] },
+      { 
+        id: '1', 
+        name: 'John Kamau', 
+        email: 'j.kamau@alakara.ac.ke', 
+        role: 'Head of Science', 
+        status: 'Active', 
+        username: 'j.kamau@alakara.ac.ke', 
+        password: 'password123', 
+        mustChangePassword: true, 
+        assignments: [
+          { classId: '1', streamId: 's1', subject: 'Science' },
+          { classId: '5', streamId: '', subject: 'Science' }
+        ]
+      },
+      { 
+        id: '2', 
+        name: 'Sarah Anyango', 
+        email: 's.anyango@alakara.ac.ke', 
+        role: 'Mathematics Teacher', 
+        status: 'Active', 
+        username: 's.anyango@alakara.ac.ke', 
+        password: 'password123', 
+        mustChangePassword: true, 
+        assignments: [
+          { classId: '1', streamId: 's1', subject: 'Mathematics' },
+          { classId: '1', streamId: 's2', subject: 'Mathematics' }
+        ]
+      },
     ];
   });
 
-  const [newStaff, setNewStaff] = useState({ name: '', email: '', role: 'Teacher', assignedSubjects: [] as string[], assignedClasses: [] as string[] });
+  const [newStaff, setNewStaff] = useState({ 
+    name: '', 
+    email: '', 
+    role: 'Teacher', 
+    assignments: [] as { classId: string, streamId: string, subject: string }[] 
+  });
   const [editingStaff, setEditingStaff] = useState<any>(null);
   const [generatedStaffCreds, setGeneratedStaffCreds] = useState<{name: string, username: string, password: string} | null>(null);
 
@@ -425,7 +639,7 @@ export const PrincipalDashboard = () => {
       
       const updatedSchool = allSchools.find((s: any) => s.id === currentSchool.id);
       
-      if (updatedSchool) {
+      if (updatedSchool && JSON.stringify(updatedSchool) !== JSON.stringify(school)) {
         setSchool(updatedSchool);
         
         // Check subscription expiry
@@ -458,27 +672,10 @@ export const PrincipalDashboard = () => {
         } else {
           setDaysToExpiry(null);
         }
-      } else {
+      } else if (!updatedSchool) {
         navigate('/login');
       }
     };
-
-    // Initial load
-    const currentSchool = JSON.parse(localStorage.getItem('alakara_current_school') || '{}');
-    const allSchools = JSON.parse(localStorage.getItem('alakara_schools') || '[]');
-    const initialSchool = allSchools.find((s: any) => s.id === currentSchool.id);
-    if (initialSchool) {
-      setSchoolSettings({
-        name: initialSchool.name || '',
-        motto: initialSchool.motto || '',
-        address: initialSchool.address || '',
-        phone: initialSchool.phone || '',
-        email: initialSchool.email || '',
-        website: initialSchool.website || '',
-        logo: initialSchool.logo || '',
-        letterheadTemplate: initialSchool.letterheadTemplate || 'standard'
-      });
-    }
 
     checkStatus();
     // Poll for status changes in this demo
@@ -515,8 +712,7 @@ export const PrincipalDashboard = () => {
         name: newStaff.name, 
         email: finalEmail, 
         role: newStaff.role,
-        assignedSubjects: newStaff.assignedSubjects,
-        assignedClasses: newStaff.assignedClasses
+        assignments: newStaff.assignments
       } : s));
       setEditingStaff(null);
     } else {
@@ -534,7 +730,7 @@ export const PrincipalDashboard = () => {
       setStaff([...staff, staffMember]);
       setGeneratedStaffCreds({ name: newStaff.name, username: finalEmail, password });
     }
-    setNewStaff({ name: '', email: '', role: 'Teacher', assignedSubjects: [], assignedClasses: [] });
+    setNewStaff({ name: '', email: '', role: 'Teacher', assignments: [] });
     setShowAddStaffModal(false);
   };
 
@@ -544,8 +740,7 @@ export const PrincipalDashboard = () => {
       name: member.name, 
       email: member.email, 
       role: member.role,
-      assignedSubjects: member.assignedSubjects || [],
-      assignedClasses: member.assignedClasses || []
+      assignments: member.assignments || []
     });
     setShowAddStaffModal(true);
   };
@@ -558,6 +753,14 @@ export const PrincipalDashboard = () => {
 
   const updateStaffRole = (id: string, newRole: string) => {
     setStaff(staff.map(s => s.id === id ? { ...s, role: newRole } : s));
+  };
+
+  const deleteStudentMark = (studentId: string, examId: string, subject: string) => {
+    if (window.confirm(`Are you sure you want to delete the marks for ${subject}?`)) {
+      const updatedMarks = marks.filter(m => !(m.studentId === studentId && m.examId === examId && m.subject === subject));
+      setMarks(updatedMarks);
+      addLog('Delete Mark', `Deleted marks for student ID ${studentId}, subject ${subject}`);
+    }
   };
 
   const handleAddStudent = (e: FormEvent) => {
@@ -573,35 +776,73 @@ export const PrincipalDashboard = () => {
       };
       setStudents([...students, student]);
     }
-    setNewStudent({ name: '', adm: '', class: 'Form 1' });
+    setNewStudent({ name: '', adm: '', class: 'Form 1', streamId: '', gender: 'Male', profile_image: null });
     setShowAddStudentModal(false);
   };
 
   const openEditStudent = (student: any) => {
     setEditingStudent(student);
-    setNewStudent({ name: student.name, adm: student.adm, class: student.class });
+    setNewStudent({ 
+      name: student.name, 
+      adm: student.adm, 
+      class: student.class, 
+      streamId: student.streamId || '',
+      gender: student.gender || 'Male',
+      profile_image: student.profile_image || null
+    });
     setShowAddStudentModal(true);
   };
 
   const handleAddClass = (e: FormEvent) => {
     e.preventDefault();
+    const classId = editingClass ? editingClass.id : Math.random().toString(36).substr(2, 9);
+    
     if (editingClass) {
-      setClasses(classes.map(c => c.id === editingClass.id ? { ...editingClass, ...newClass } : c));
+      setClasses(classes.map(c => c.id === editingClass.id ? { ...editingClass, name: newClass.name, teacherId: newClass.teacherId, capacity: newClass.capacity } : c));
       setEditingClass(null);
     } else {
       const cls = {
-        id: Math.random().toString(36).substr(2, 9),
-        ...newClass
+        id: classId,
+        name: newClass.name,
+        teacherId: newClass.teacherId,
+        capacity: newClass.capacity
       };
       setClasses([...classes, cls]);
     }
-    setNewClass({ name: '', teacherId: '', capacity: 40 });
+
+    // Handle streams
+    const existingStreams = streams.filter(s => s.classId === classId);
+    const newStreamNames = newClass.streams;
+    
+    // Remove streams not in new list
+    const streamsToRemove = existingStreams.filter(s => !newStreamNames.includes(s.name));
+    let updatedStreams = streams.filter(s => !streamsToRemove.find(r => r.id === s.id));
+    
+    // Add new streams
+    newStreamNames.forEach(name => {
+      if (!existingStreams.find(s => s.name === name)) {
+        updatedStreams.push({
+          id: Math.random().toString(36).substr(2, 9),
+          classId: classId,
+          name: name
+        });
+      }
+    });
+    
+    setStreams(updatedStreams);
+    setNewClass({ name: '', teacherId: '', capacity: 40, streams: [] });
     setShowAddClassModal(false);
   };
 
   const openEditClass = (cls: any) => {
     setEditingClass(cls);
-    setNewClass({ name: cls.name, teacherId: cls.teacherId || '', capacity: cls.capacity || 40 });
+    const classStreams = streams.filter(s => s.classId === cls.id).map(s => s.name);
+    setNewClass({ 
+      name: cls.name, 
+      teacherId: cls.teacherId || '', 
+      capacity: cls.capacity || 40,
+      streams: classStreams
+    });
     setShowAddClassModal(true);
   };
 
@@ -698,15 +939,18 @@ export const PrincipalDashboard = () => {
 
   // Auto-save drafts
   useEffect(() => {
-    const draft = {
-      newExam,
-      newStaff,
-      schoolSettings,
-      newClass,
-      newStudent
-    };
-    localStorage.setItem('alakara_config_draft', JSON.stringify(draft));
-    setHasUnsavedChanges(true);
+    const timer = setTimeout(() => {
+      const draft = {
+        newExam,
+        newStaff,
+        schoolSettings,
+        newClass,
+        newStudent
+      };
+      localStorage.setItem('alakara_config_draft', JSON.stringify(draft));
+      setHasUnsavedChanges(true);
+    }, 1000);
+    return () => clearTimeout(timer);
   }, [newExam, newStaff, schoolSettings, newClass, newStudent]);
 
   // Load drafts on mount
@@ -750,6 +994,24 @@ export const PrincipalDashboard = () => {
     setNewExam({ title: '', term: 'Term 1', year: '2026', classes: [], subjects: [], startDate: '', endDate: '' });
     setAcademicSubTab('overview');
     alert('Exam created successfully! It is now visible to teachers.');
+  };
+
+  const [logs, setLogs] = useState<any[]>(() => {
+    const saved = localStorage.getItem('alakara_audit_trail');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  const addLog = (action: string, details: string) => {
+    const newLog = {
+      id: Date.now().toString(),
+      timestamp: new Date().toISOString(),
+      user: 'Principal',
+      action,
+      details
+    };
+    const updatedLogs = [newLog, ...logs].slice(0, 100);
+    setLogs(updatedLogs);
+    localStorage.setItem('alakara_audit_trail', JSON.stringify(updatedLogs));
   };
 
   const processExam = (id: string) => {
@@ -897,105 +1159,6 @@ export const PrincipalDashboard = () => {
     setShowReportPreview(true);
   };
 
-  const generatePDF = () => {
-    const doc = new jsPDF();
-    const student = students.find(s => s.id === reportConfig.selectedStudentId);
-    if (!student) return;
-
-    let startY = 20;
-
-    // Add Letterhead
-    if (reportConfig.includeLetterhead && schoolSettings.name) {
-      doc.setFontSize(22);
-      doc.setFont("helvetica", "bold");
-      doc.text(schoolSettings.name, 105, startY, { align: "center" });
-      startY += 8;
-      
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      if (schoolSettings.motto) {
-        doc.text(`"${schoolSettings.motto}"`, 105, startY, { align: "center" });
-        startY += 6;
-      }
-      if (schoolSettings.address) {
-        doc.text(schoolSettings.address, 105, startY, { align: "center" });
-        startY += 6;
-      }
-      if (schoolSettings.phone || schoolSettings.email) {
-        doc.text(`${schoolSettings.phone} | ${schoolSettings.email}`, 105, startY, { align: "center" });
-        startY += 6;
-      }
-      doc.line(20, startY, 190, startY);
-      startY += 10;
-    }
-
-    doc.setFontSize(16);
-    doc.setFont("helvetica", "bold");
-    doc.text("ACADEMIC PERFORMANCE REPORT", 105, startY, { align: "center" });
-    startY += 15;
-
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Student Name: ${student.name}`, 20, startY);
-    doc.text(`Class/Grade: ${student.class}`, 140, startY);
-    startY += 8;
-    doc.text(`Admission No: ${student.adm}`, 20, startY);
-    doc.text(`Academic Year: 2024`, 140, startY);
-    startY += 15;
-
-    const tableData = learningAreas.map(subject => {
-      const row = [subject];
-      reportConfig.selectedExamIds.forEach(examId => {
-        const mark = marks.find(m => m.studentId === student.id && m.examId === examId && m.subject === subject);
-        row.push(mark ? mark.score : '-');
-      });
-      return row;
-    });
-
-    const headers = ['Subject', ...reportConfig.selectedExamIds.map(id => exams.find(e => e.id === id)?.title || 'Exam')];
-
-    autoTable(doc, {
-      startY: startY,
-      head: [headers],
-      body: tableData,
-      theme: 'grid',
-      headStyles: { fillColor: [0, 140, 81] }, // kenya-green
-    });
-
-    doc.save(`${student.name}_Report_Card.pdf`);
-  };
-
-  const generateExcel = () => {
-    const student = students.find(s => s.id === reportConfig.selectedStudentId);
-    if (!student) return;
-
-    const tableData = learningAreas.map(subject => {
-      const row = [subject];
-      reportConfig.selectedExamIds.forEach(examId => {
-        const mark = marks.find(m => m.studentId === student.id && m.examId === examId && m.subject === subject);
-        row.push(mark ? mark.score : '-');
-      });
-      return row;
-    });
-
-    const headers = ['Subject', ...reportConfig.selectedExamIds.map(id => exams.find(e => e.id === id)?.title || 'Exam')];
-    
-    const wsData = [
-      ['ACADEMIC PERFORMANCE REPORT'],
-      [],
-      ['Student Name:', student.name, 'Class/Grade:', student.class],
-      ['Admission No:', student.adm, 'Academic Year:', '2024'],
-      [],
-      headers,
-      ...tableData
-    ];
-
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Report Card");
-    XLSX.writeFile(wb, `${student.name}_Report_Card.xlsx`);
-  };
-
   const openEditMarks = (student: any) => {
     setSelectedMarksStudent(student);
     const studentMarks = marks.filter(m => m.studentId === student.id);
@@ -1026,6 +1189,80 @@ export const PrincipalDashboard = () => {
     alert('Marks updated successfully!');
   };
 
+  const getMeritListData = () => {
+    if (!selectedAnalysisExamId) return [];
+    
+    const examMarks = marks.filter(m => m.examId === selectedAnalysisExamId);
+    const exam = exams.find(e => e.id === selectedAnalysisExamId);
+    if (!exam) return [];
+
+    // 1. Get all students in the exam classes
+    const examStudents = students.filter(s => exam.classes.includes(s.class));
+
+    // 2. Calculate scores for all students
+    const studentAnalysis = examStudents.map(student => {
+      const studentMarks = examMarks.filter(m => m.studentId === student.id);
+      const subjectScores: any = {};
+      let totalScore = 0;
+      let subjectsCount = 0;
+
+      learningAreas.forEach(la => {
+        const mark = studentMarks.find(m => m.subject === la);
+        const score = mark ? parseFloat(mark.score) : null;
+        subjectScores[la] = score;
+        if (score !== null) {
+          totalScore += score;
+          subjectsCount++;
+        }
+      });
+
+      const average = subjectsCount > 0 ? totalScore / subjectsCount : 0;
+      const gradeObj = gradingSystem.find(g => average >= g.min && average <= g.max);
+      const grade = gradeObj ? gradeObj.grade : 'E';
+
+      return {
+        id: student.id,
+        name: student.name,
+        adm: student.adm,
+        class: student.class,
+        subjectScores,
+        totalScore,
+        average,
+        grade
+      };
+    });
+
+    // 3. Calculate FRM POS (Overall Rank)
+    const overallRanked = [...studentAnalysis].sort((a, b) => b.totalScore - a.totalScore);
+    const withOverallRank = overallRanked.map((s, index) => ({ ...s, frmPos: index + 1 }));
+
+    // 4. Calculate CLS POS (Class Rank)
+    const finalData = withOverallRank.map(student => {
+      const classStudents = withOverallRank.filter(s => s.class === student.class);
+      const classRanked = classStudents.sort((a, b) => b.totalScore - a.totalScore);
+      const clsPos = classRanked.findIndex(s => s.id === student.id) + 1;
+      return { ...student, clsPos };
+    });
+
+    // 5. Filter by selected class if needed
+    const filtered = finalData.filter(s => selectedAnalysisClass === 'All' || s.class === selectedAnalysisClass);
+
+    // 6. Apply custom sorting
+    return filtered.sort((a, b) => {
+      switch (meritListSortBy) {
+        case 'total': return b.totalScore - a.totalScore;
+        case 'average': return b.average - a.average;
+        case 'position': return a.frmPos - b.frmPos;
+        case 'name': return a.name.localeCompare(b.name);
+        case 'gender': return (a.gender || '').localeCompare(b.gender || '');
+        case 'stream': return (a.streamId || '').localeCompare(b.streamId || '');
+        default: return a.frmPos - b.frmPos;
+      }
+    });
+  };
+
+  const [meritListSortBy, setMeritListSortBy] = useState<'total' | 'average' | 'position' | 'name' | 'gender' | 'stream'>('total');
+
   const getAnalysisData = () => {
     if (!selectedAnalysisExamId) return [];
     
@@ -1035,7 +1272,7 @@ export const PrincipalDashboard = () => {
 
     // Group marks by student
     const studentAnalysis = students
-      .filter(s => exam.classes.includes(s.class) && (selectedAnalysisClass === 'All' || s.class === selectedAnalysisClass))
+      .filter(s => (selectedAnalysisClass === 'All' || s.class === selectedAnalysisClass))
       .map(student => {
         const studentMarks = examMarks.filter(m => m.studentId === student.id);
         const subjectScores: any = {};
@@ -1044,7 +1281,7 @@ export const PrincipalDashboard = () => {
 
         learningAreas.forEach(la => {
           const mark = studentMarks.find(m => m.subject === la);
-          const score = mark ? parseFloat(mark.score) : null;
+          const score = mark ? parseFloat(mark.score || mark.total || 0) : null;
           subjectScores[la] = score;
           if (score !== null) {
             totalScore += score;
@@ -1063,6 +1300,8 @@ export const PrincipalDashboard = () => {
           name: student.name,
           adm: student.adm,
           class: student.class,
+          gender: student.gender,
+          streamId: student.streamId,
           subjectScores,
           totalScore,
           average,
@@ -1251,85 +1490,201 @@ export const PrincipalDashboard = () => {
     };
   };
 
-  const exportAnalysis = () => {
-    if (!selectedAnalysisExamId || analysisData.length === 0) return;
+  const exportAnalysis = (format: 'excel' | 'pdf' = 'excel') => {
+    const isMeritList = academicSubTab === 'merit-list';
+    const data = isMeritList ? getMeritListData() : analysisData;
+    
+    if (!selectedAnalysisExamId || data.length === 0) return;
     
     const exam = exams.find(e => e.id === selectedAnalysisExamId);
     const highlights = getAnalysisHighlights();
     
-    const mainSheetData = analysisData.map(row => {
-      const exportRow: any = {
-        'Rank': row.rank,
-        'Adm No': row.adm,
-        'Student Name': row.name,
-        'Class': row.class
-      };
-      
-      learningAreas.forEach(la => {
-        exportRow[la] = row.subjectScores[la] ?? '--';
+    if (format === 'excel') {
+      const mainSheetData = data.map(row => {
+        const exportRow: any = {};
+        
+        if (isMeritList) {
+          exportRow['ADMNO'] = row.adm;
+          exportRow['FULL NAMES'] = row.name;
+          exportRow['KPSEA'] = '';
+          exportRow['STR'] = row.class.substring(0, 1);
+          learningAreas.forEach(la => {
+            exportRow[la.substring(0, 4).toUpperCase()] = row.subjectScores[la] ?? '';
+          });
+          exportRow['T Marks'] = row.totalScore;
+          exportRow['Mean Grd'] = `${row.average.toFixed(0)} ${row.grade}`;
+          exportRow['CLS POS'] = row.clsPos;
+          exportRow['FRM POS'] = row.frmPos;
+        } else {
+          exportRow['Rank'] = row.rank;
+          exportRow['Adm No'] = row.adm;
+          exportRow['Student Name'] = row.name;
+          exportRow['Class'] = row.class;
+          learningAreas.forEach(la => {
+            exportRow[la] = row.subjectScores[la] ?? '--';
+          });
+          exportRow['Total'] = row.totalScore;
+          exportRow['Average (%)'] = row.average.toFixed(1);
+          exportRow['Grade'] = row.grade;
+        }
+        
+        return exportRow;
       });
-      
-      exportRow['Total'] = row.totalScore;
-      exportRow['Average (%)'] = row.average.toFixed(1);
-      exportRow['Grade'] = row.grade;
-      
-      return exportRow;
-    });
 
-    const highlightsData = [
-      { Category: 'Best Student', Name: highlights?.bestStudent?.name, Detail: `${highlights?.bestStudent?.average.toFixed(1)}% (Rank 1)` },
-    ];
+      const highlightsData = [
+        { Category: 'Best Student', Name: highlights?.bestStudent?.name, Detail: `${highlights?.bestStudent?.average.toFixed(1)}% (Rank 1)` },
+      ];
 
-    if (highlights?.mostImproved) {
-      highlightsData.push({ 
-        Category: 'Most Improved', 
-        Name: highlights.mostImproved.name, 
-        Detail: `+${highlights.mostImproved.improvement.toFixed(1)}% from ${highlights.previousExamTitle}` 
+      if (highlights?.mostImproved) {
+        highlightsData.push({ 
+          Category: 'Most Improved', 
+          Name: highlights.mostImproved.name, 
+          Detail: `+${highlights.mostImproved.improvement.toFixed(1)}% from ${highlights.previousExamTitle}` 
+        });
+      }
+
+      if (highlights?.mostDropped) {
+        highlightsData.push({ 
+          Category: 'Most Dropped', 
+          Name: highlights.mostDropped.name, 
+          Detail: `${highlights.mostDropped.improvement.toFixed(1)}% from ${highlights.previousExamTitle}` 
+        });
+      }
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(mainSheetData);
+      const wsHighlights = XLSX.utils.json_to_sheet(highlightsData);
+      
+      XLSX.utils.book_append_sheet(wb, ws, isMeritList ? "Merit List" : "Full Analysis");
+      XLSX.utils.book_append_sheet(wb, wsHighlights, "Highlights");
+      
+      XLSX.writeFile(wb, `${exam?.title}_${isMeritList ? 'Merit_List' : 'Analysis'}.xlsx`);
+    } else {
+      // PDF Export
+      const doc = new jsPDF();
+      
+      // Header
+      doc.setFontSize(18);
+      doc.text(schoolSettings.name || school.name, 105, 15, { align: 'center' });
+      doc.setFontSize(14);
+      doc.text(`${exam?.title} - ${isMeritList ? 'Merit List' : 'Performance Analysis'}`, 105, 25, { align: 'center' });
+      doc.setFontSize(10);
+      doc.text(`Class: ${selectedAnalysisClass} | Date: ${new Date().toLocaleDateString()}`, 105, 32, { align: 'center' });
+
+      if (!isMeritList) {
+        // Highlights (Only for Analysis view)
+        doc.setFontSize(12);
+        doc.text('Analysis Highlights', 14, 45);
+        autoTable(doc, {
+          startY: 50,
+          head: [['Category', 'Student Name', 'Details']],
+          body: [
+            ['Best Student', highlights?.bestStudent?.name || 'N/A', `${highlights?.bestStudent?.average.toFixed(1)}%`],
+            ['Most Improved', highlights?.mostImproved?.name || 'N/A', highlights?.mostImproved ? `+${highlights.mostImproved.improvement.toFixed(1)}%` : 'N/A'],
+            ['Most Dropped', highlights?.mostDropped?.name || 'N/A', highlights?.mostDropped ? `-${highlights.mostDropped.improvement.toFixed(1)}%` : 'N/A'],
+          ],
+          theme: 'striped',
+          headStyles: { fillColor: [0, 102, 51] }
+        });
+      }
+
+      // Main Table
+      const tableHead = isMeritList 
+        ? [['ADMNO', 'FULL NAMES', 'STR', ...learningAreas.map(la => la.substring(0, 4).toUpperCase()), 'T Marks', 'Mean Grd', 'CLS POS', 'FRM POS']]
+        : [['Rank', 'Adm', 'Name', ...learningAreas, 'Total', 'Avg', 'Grade']];
+      
+      const tableBody = data.map(row => {
+        if (isMeritList) {
+          return [
+            row.adm,
+            row.name.toUpperCase(),
+            row.class.substring(0, 1),
+            ...learningAreas.map(la => row.subjectScores[la] ?? ''),
+            row.totalScore.toFixed(0),
+            `${row.average.toFixed(0)} ${row.grade}`,
+            row.clsPos,
+            row.frmPos
+          ];
+        }
+        return [
+          row.rank,
+          row.adm,
+          row.name,
+          ...learningAreas.map(la => row.subjectScores[la] ?? '--'),
+          row.totalScore.toFixed(0),
+          `${row.average.toFixed(1)}%`,
+          row.grade
+        ];
       });
+
+      autoTable(doc, {
+        startY: isMeritList ? 40 : (doc as any).lastAutoTable.finalY + 15,
+        head: tableHead,
+        body: tableBody,
+        theme: 'grid',
+        headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], fontSize: 7 },
+        styles: { fontSize: 7, cellPadding: 1 },
+        columnStyles: isMeritList ? {
+          1: { cellWidth: 40 }, // Name column wider
+        } : {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 15 },
+          2: { cellWidth: 30 }
+        }
+      });
+
+      doc.save(`${exam?.title}_${isMeritList ? 'Merit_List' : 'Analysis'}.pdf`);
     }
-
-    if (highlights?.mostDropped) {
-      highlightsData.push({ 
-        Category: 'Most Dropped', 
-        Name: highlights.mostDropped.name, 
-        Detail: `${highlights.mostDropped.improvement.toFixed(1)}% from ${highlights.previousExamTitle}` 
-      });
-    }
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(mainSheetData);
-    const wsHighlights = XLSX.utils.json_to_sheet(highlightsData);
-    
-    XLSX.utils.book_append_sheet(wb, ws, "Full Analysis");
-    XLSX.utils.book_append_sheet(wb, wsHighlights, "Highlights");
-    
-    XLSX.writeFile(wb, `${exam?.title}_Analysis.xlsx`);
   };
 
-  const handleUpdateSchool = (e: FormEvent) => {
+  const handleUpdateSchool = async (e: FormEvent) => {
     e.preventDefault();
-    const allSchools = JSON.parse(localStorage.getItem('alakara_schools') || '[]');
-    const updatedSchools = allSchools.map((s: any) => 
-      s.id === school.id ? { ...s, ...schoolSettings } : s
-    );
-    localStorage.setItem('alakara_schools', JSON.stringify(updatedSchools));
-    
-    // Update current school too
-    const currentSchool = JSON.parse(localStorage.getItem('alakara_current_school') || '{}');
-    localStorage.setItem('alakara_current_school', JSON.stringify({ ...currentSchool, ...schoolSettings }));
-    
-    setSchool({ ...school, ...schoolSettings });
-    alert('School settings updated successfully!');
+    try {
+      // Update Supabase
+      await supabaseService.updateSchoolSettings(school.id, {
+        name: schoolSettings.name,
+        motto: schoolSettings.motto,
+        email: schoolSettings.email,
+        phone: schoolSettings.phone,
+        website: schoolSettings.website,
+        address: schoolSettings.address,
+        letterhead_template: schoolSettings.letterheadTemplate,
+        logo_url: schoolSettings.logo
+      });
+
+      const allSchools = JSON.parse(localStorage.getItem('alakara_schools') || '[]');
+      const updatedSchools = allSchools.map((s: any) => 
+        s.id === school.id ? { ...s, ...schoolSettings } : s
+      );
+      localStorage.setItem('alakara_schools', JSON.stringify(updatedSchools));
+      
+      // Update current school too
+      const currentSchool = JSON.parse(localStorage.getItem('alakara_current_school') || '{}');
+      localStorage.setItem('alakara_current_school', JSON.stringify({ ...currentSchool, ...schoolSettings }));
+      
+      setSchool({ ...school, ...schoolSettings });
+      setHasUnsavedChanges(false);
+      localStorage.removeItem('alakara_config_draft');
+      alert('School settings updated successfully!');
+      
+      addLog('Update School Settings', `Updated settings for ${schoolSettings.name}`);
+    } catch (error: any) {
+      alert('Error updating school settings: ' + error.message);
+    }
   };
 
-  const handleLogoUpload = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setSchoolSettings({ ...schoolSettings, logo: reader.result as string });
-      };
-      reader.readAsDataURL(file);
+      try {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setSchoolSettings({ ...schoolSettings, logo: reader.result as string });
+        };
+        reader.readAsDataURL(file);
+      } catch (error: any) {
+        alert('Error uploading logo: ' + error.message);
+      }
     }
   };
 
@@ -1387,7 +1742,6 @@ export const PrincipalDashboard = () => {
               <BookOpen className="w-5 h-5" />
               Academic Records
             </button>
-
             <button 
               onClick={() => setActiveTab('settings')}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-bold transition-all ${isSuspended ? 'opacity-50 cursor-not-allowed' : activeTab === 'settings' ? 'bg-kenya-green text-white' : 'text-gray-400 hover:bg-white/5 hover:text-white'}`} 
@@ -1875,11 +2229,12 @@ export const PrincipalDashboard = () => {
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {[
                       { id: 'create-exam', title: 'Create New Exam', desc: 'Schedule and set up new examinations.', icon: PlusCircle, color: 'text-kenya-green', bg: 'bg-kenya-green/10' },
-                      { id: 'edit-exam', title: 'Edit Exams & Marks', desc: 'Modify exam marks and configurations.', icon: Edit3, color: 'text-purple-600', bg: 'bg-purple-50' },
                       { id: 'learning-area', title: 'Learning Areas', desc: 'Manage subjects and curriculum areas.', icon: Library, color: 'text-blue-600', bg: 'bg-blue-50' },
                       { id: 'grading', title: 'Grading System', desc: 'Define grade boundaries and scales.', icon: ClipboardList, color: 'text-orange-600', bg: 'bg-orange-50' },
+                      { id: 'edit-exam', title: 'Edit Exams & Subjects', desc: 'Modify existing exam configurations.', icon: Edit3, color: 'text-indigo-600', bg: 'bg-indigo-50' },
                       { id: 'analysis', title: 'Analyse Results', desc: 'Deep dive into student performance data.', icon: BarChart3, color: 'text-kenya-red', bg: 'bg-kenya-red/10' },
                       { id: 'results-processing', title: 'Results Processing', desc: 'Subject champions and top performers.', icon: Trophy, color: 'text-yellow-600', bg: 'bg-yellow-50' },
+                      { id: 'merit-list', title: 'Merit List', desc: 'Detailed spreadsheet-style performance list.', icon: ClipboardList, color: 'text-kenya-green', bg: 'bg-kenya-green/10' },
                       { id: 'reports', title: 'Generate Report Cards', desc: 'Produce and distribute student reports.', icon: FileSpreadsheet, color: 'text-purple-600', bg: 'bg-purple-50' },
                       { id: 'academic-settings', title: 'Academic Settings', desc: 'Configure assessments and ranking logic.', icon: Settings, color: 'text-gray-600', bg: 'bg-gray-100' },
                     ].map((item) => (
@@ -1898,92 +2253,6 @@ export const PrincipalDashboard = () => {
                         <p className="text-sm text-gray-500">{item.desc}</p>
                       </button>
                     ))}
-                  </div>
-                ) : academicSubTab === 'edit-exam' ? (
-                  <div className="space-y-8">
-                    <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
-                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-                        <div>
-                          <h3 className="text-xl font-bold text-kenya-black">Edit Exams & Marks</h3>
-                          <p className="text-sm text-gray-500">Modify marks for specific classes and subjects.</p>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-4">
-                          <select 
-                            value={selectedEditClass}
-                            onChange={(e) => setSelectedEditClass(e.target.value)}
-                            className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
-                          >
-                            <option value="">Select Class...</option>
-                            {classes.map(c => (
-                              <option key={c.id} value={c.name}>{c.name}</option>
-                            ))}
-                          </select>
-                          <select 
-                            value={selectedEditSubject}
-                            onChange={(e) => setSelectedEditSubject(e.target.value)}
-                            className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
-                          >
-                            <option value="">Select Subject...</option>
-                            {learningAreas.map(la => (
-                              <option key={la} value={la}>{la}</option>
-                            ))}
-                          </select>
-                          <select 
-                            value={selectedEditExamId}
-                            onChange={(e) => setSelectedEditExamId(e.target.value)}
-                            className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
-                          >
-                            <option value="">Select Examination...</option>
-                            {exams.map(e => (
-                              <option key={e.id} value={e.id}>{e.title}</option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-
-                      {(!selectedEditClass || !selectedEditSubject || !selectedEditExamId) ? (
-                        <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
-                          <Edit3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-                          <p className="text-gray-400 font-medium italic">Select class, subject, and examination to edit marks.</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-6">
-                          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                            <table className="w-full text-left">
-                              <thead className="bg-gray-50 text-[10px] font-black text-gray-400 uppercase tracking-wider">
-                                <tr>
-                                  <th className="px-6 py-4">Admission No</th>
-                                  <th className="px-6 py-4">Student Name</th>
-                                  <th className="px-6 py-4">Score (0-100)</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {editMarksData.map((data, idx) => (
-                                  <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                                    <td className="px-6 py-4 font-mono text-sm">{data.adm}</td>
-                                    <td className="px-6 py-4 font-bold text-kenya-black">{data.name}</td>
-                                    <td className="px-6 py-4">
-                                      <input 
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        value={data.score}
-                                        onChange={(e) => handleEditMarkChange(data.studentId, e.target.value)}
-                                        className="w-24 px-3 py-2 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold"
-                                        placeholder="--"
-                                      />
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                          <div className="flex justify-end">
-                            <Button onClick={() => setShowEditConfirmModal(true)}>Save Changes</Button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
                   </div>
                 ) : academicSubTab === 'create-exam' ? (
                   <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8 max-w-2xl mx-auto">
@@ -2161,6 +2430,106 @@ export const PrincipalDashboard = () => {
                       </tbody>
                     </table>
                   </div>
+                ) : academicSubTab === 'merit-list' ? (
+                  <div className="space-y-8">
+                    <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                        <div>
+                          <h3 className="text-xl font-bold text-kenya-black">Merit List</h3>
+                          <p className="text-sm text-gray-500">Official ranking and performance breakdown.</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-4">
+                          <select 
+                            value={selectedAnalysisClass}
+                            onChange={(e) => setSelectedAnalysisClass(e.target.value)}
+                            className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                          >
+                            <option value="All">All Classes</option>
+                            {classes.map(c => (
+                              <option key={c.id} value={c.name}>{c.name}</option>
+                            ))}
+                          </select>
+                          <select 
+                            value={selectedAnalysisExamId}
+                            onChange={(e) => setSelectedAnalysisExamId(e.target.value)}
+                            className="px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 font-bold text-sm"
+                          >
+                            <option value="">Select Examination...</option>
+                            {exams.map(e => (
+                              <option key={e.id} value={e.id}>{e.title} ({e.term} {e.year})</option>
+                            ))}
+                          </select>
+                          <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
+                            <span className="text-[10px] font-black text-gray-400 uppercase">Sort By:</span>
+                            <select 
+                              value={meritListSortBy}
+                              onChange={(e) => setMeritListSortBy(e.target.value as any)}
+                              className="bg-transparent border-none focus:ring-0 font-bold text-xs text-kenya-black"
+                            >
+                              <option value="total">Total Marks</option>
+                              <option value="average">Average (%)</option>
+                              <option value="position">Position</option>
+                              <option value="name">Name</option>
+                              <option value="gender">Gender</option>
+                              <option value="stream">Stream</option>
+                            </select>
+                          </div>
+                          {selectedAnalysisExamId && (
+                            <Button onClick={() => exportAnalysis('excel')} variant="secondary" className="gap-2 py-2 text-xs">
+                              <Download className="w-4 h-4" />
+                              Export Excel
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+
+                      {!selectedAnalysisExamId ? (
+                        <div className="text-center py-20 bg-gray-50 rounded-3xl border-2 border-dashed border-gray-200">
+                          <ClipboardList className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                          <p className="text-gray-400 font-medium italic">Please select an examination to view the merit list.</p>
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                          <table className="w-full text-left border-collapse min-w-[1200px]">
+                            <thead>
+                              <tr className="bg-gray-50 text-[10px] font-black text-gray-500 uppercase tracking-wider border-b border-gray-200">
+                                <th className="px-2 py-3 border-r border-gray-200 sticky left-0 bg-gray-50 z-10">ADMNO</th>
+                                <th className="px-2 py-3 border-r border-gray-200 sticky left-[60px] bg-gray-50 z-10 min-w-[180px]">FULL NAMES</th>
+                                <th className="px-2 py-3 border-r border-gray-200 text-center">KPSEA</th>
+                                <th className="px-2 py-3 border-r border-gray-200 text-center">STR</th>
+                                {learningAreas.map(la => (
+                                  <th key={la} className="px-2 py-3 border-r border-gray-200 text-center min-w-[60px]">{la.substring(0, 4).toUpperCase()}</th>
+                                ))}
+                                <th className="px-2 py-3 border-r border-gray-200 text-center">T Marks</th>
+                                <th className="px-2 py-3 border-r border-gray-200 text-center">Mean Grd</th>
+                                <th className="px-2 py-3 border-r border-gray-200 text-center">CLS POS</th>
+                                <th className="px-2 py-3 text-center">FRM POS</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                              {getMeritListData().map((row: any) => (
+                                <tr key={row.id} className="hover:bg-gray-50 transition-colors text-[11px] font-bold">
+                                  <td className="px-2 py-2 border-r border-gray-100 sticky left-0 bg-white z-10">{row.adm}</td>
+                                  <td className="px-2 py-2 border-r border-gray-100 sticky left-[60px] bg-white z-10 uppercase">{row.name}</td>
+                                  <td className="px-2 py-2 border-r border-gray-100 text-center text-gray-300">-</td>
+                                  <td className="px-2 py-2 border-r border-gray-100 text-center">{row.class.substring(0, 1)}</td>
+                                  {learningAreas.map(la => (
+                                    <td key={la} className="px-2 py-2 border-r border-gray-100 text-center">
+                                      {row.subjectScores[la] !== null ? row.subjectScores[la] : ''}
+                                    </td>
+                                  ))}
+                                  <td className="px-2 py-2 border-r border-gray-100 text-center font-black">{row.totalScore.toFixed(0)}</td>
+                                  <td className="px-2 py-2 border-r border-gray-100 text-center">{row.average.toFixed(0)} {row.grade}</td>
+                                  <td className="px-2 py-2 border-r border-gray-100 text-center">{row.clsPos}</td>
+                                  <td className="px-2 py-2 text-center">{row.frmPos}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 ) : academicSubTab === 'academic-settings' ? (
                   <div className="space-y-8">
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -2263,6 +2632,92 @@ export const PrincipalDashboard = () => {
                       </div>
                     </div>
                   </div>
+                ) : academicSubTab === 'edit-exam' ? (
+                  <div className="max-w-4xl mx-auto space-y-8">
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-8">
+                      <h3 className="text-xl font-bold text-kenya-black mb-8">Edit Exam Configuration</h3>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div className="space-y-2">
+                          <label className="text-xs font-black text-gray-500 uppercase">Select Class</label>
+                          <select 
+                            value={selectedEditClass}
+                            onChange={(e) => setSelectedEditClass(e.target.value)}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                          >
+                            <option value="">Choose Class...</option>
+                            {classes.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-black text-gray-500 uppercase">Select Subject</label>
+                          <select 
+                            value={selectedEditSubject}
+                            onChange={(e) => setSelectedEditSubject(e.target.value)}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                          >
+                            <option value="">Choose Subject...</option>
+                            {learningAreas.map(la => <option key={la} value={la}>{la}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-black text-gray-500 uppercase">Select Exam</label>
+                          <select 
+                            value={selectedEditExamId}
+                            onChange={(e) => setSelectedEditExamId(e.target.value)}
+                            className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                          >
+                            <option value="">Choose Exam...</option>
+                            {exams.filter(e => e.classes.includes(selectedEditClass) || e.classes.length === 0).map(e => (
+                              <option key={e.id} value={e.id}>{e.title} ({e.term} {e.year})</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {selectedEditExamId && (
+                        <div className="space-y-6 border-t border-gray-100 pt-8">
+                          {exams.find(e => e.id === selectedEditExamId)?.locked ? (
+                            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-center gap-3 text-amber-800">
+                              <Lock className="w-5 h-5" />
+                              <p className="text-sm font-medium">This exam is locked and cannot be edited. Please unlock it first.</p>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-2">
+                                  <label className="text-xs font-black text-gray-500 uppercase">Weighting (%)</label>
+                                  <input 
+                                    type="number"
+                                    value={editExamConfig.weighting}
+                                    onChange={(e) => setEditExamConfig({...editExamConfig, weighting: parseInt(e.target.value)})}
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <label className="text-xs font-black text-gray-500 uppercase">Max Marks</label>
+                                  <input 
+                                    type="number"
+                                    value={editExamConfig.maxMarks}
+                                    onChange={(e) => setEditExamConfig({...editExamConfig, maxMarks: parseInt(e.target.value)})}
+                                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                                  />
+                                </div>
+                              </div>
+                              
+                              <div className="flex justify-end gap-3">
+                                <Button variant="ghost" onClick={() => setSelectedEditExamId('')}>Cancel</Button>
+                                <Button onClick={() => setShowEditConfirmation(true)} className="gap-2">
+                                  <Save className="w-4 h-4" />
+                                  Save Changes
+                                </Button>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 ) : academicSubTab === 'analysis' ? (
                   <div className="space-y-8">
                     <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm">
@@ -2315,10 +2770,20 @@ export const PrincipalDashboard = () => {
                                   <span className="text-xs font-bold text-gray-600">Show Rank</span>
                                 </label>
                               </div>
-                              <Button onClick={exportAnalysis} className="gap-2 py-2 text-xs">
-                                <Download className="w-4 h-4" />
-                                Export Analysis
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Button onClick={() => exportAnalysis('excel')} variant="secondary" className="gap-2 py-2 text-xs">
+                                  <Download className="w-4 h-4" />
+                                  Excel
+                                </Button>
+                                <Button onClick={() => exportAnalysis('pdf')} className="gap-2 py-2 text-xs">
+                                  <Download className="w-4 h-4" />
+                                  PDF
+                                </Button>
+                                <Button onClick={() => window.print()} variant="ghost" className="gap-2 py-2 text-xs border border-gray-200">
+                                  <Printer className="w-4 h-4" />
+                                  Print Analysis
+                                </Button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -2371,6 +2836,7 @@ export const PrincipalDashboard = () => {
                                 <th className="px-4 py-4 text-center font-black text-kenya-black">Total</th>
                                 <th className="px-4 py-4 text-center font-black text-kenya-black">Avg</th>
                                 {analysisOptions.showGrades && <th className="px-4 py-4 text-center font-black text-kenya-black">Grade</th>}
+                                <th className="px-4 py-4 text-right font-black text-kenya-black">Actions</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -2388,18 +2854,37 @@ export const PrincipalDashboard = () => {
                                     </td>
                                   )}
                                   <td className="px-4 py-4 font-mono text-xs text-gray-500 sticky left-0 bg-white z-10">{row.adm}</td>
-                                  <td className="px-4 py-4 font-bold text-kenya-black sticky left-0 bg-white z-10">{row.name}</td>
+                                  <td className="px-4 py-4 font-bold text-kenya-black sticky left-0 bg-white z-10">
+                                    <div className="flex items-center gap-3">
+                                      {row.profile_image ? (
+                                        <img src={row.profile_image} alt="" className="w-8 h-8 rounded-lg object-cover" />
+                                      ) : (
+                                        <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                                          <User className="w-4 h-4 text-gray-400" />
+                                        </div>
+                                      )}
+                                      {row.name}
+                                    </div>
+                                  </td>
                                   {learningAreas.map(la => {
                                     const score = row.subjectScores[la];
                                     const gradeObj = gradingSystem.find(g => score !== null && score >= g.min && score <= g.max);
                                     return (
                                       <td key={la} className="px-4 py-4 text-center">
-                                        <div className="flex flex-col items-center">
+                                        <div className="flex flex-col items-center group relative">
                                           <span className={`font-bold ${score === null ? 'text-gray-300' : 'text-kenya-black'}`}>
                                             {score !== null ? score : '--'}
                                           </span>
                                           {analysisOptions.showGrades && score !== null && (
                                             <span className="text-[10px] font-black text-kenya-green">{gradeObj?.grade}</span>
+                                          )}
+                                          {score !== null && (
+                                            <button 
+                                              onClick={() => deleteStudentMark(row.id, selectedAnalysisExamId, la)}
+                                              className="absolute -top-2 -right-2 p-1 bg-white rounded-full shadow-sm border border-gray-100 text-kenya-red opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                              <Trash2 className="w-3 h-3" />
+                                            </button>
                                           )}
                                         </div>
                                       </td>
@@ -2414,6 +2899,21 @@ export const PrincipalDashboard = () => {
                                       </span>
                                     </td>
                                   )}
+                                  <td className="px-4 py-4 text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                      <button 
+                                        onClick={() => {
+                                          if (window.confirm(`Delete ALL marks for ${row.name} in this exam?`)) {
+                                            setMarks(marks.filter(m => !(m.studentId === row.id && m.examId === selectedAnalysisExamId)));
+                                          }
+                                        }}
+                                        className="p-2 text-gray-400 hover:text-kenya-red transition-colors"
+                                        title="Delete All Marks"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -2753,16 +3253,11 @@ export const PrincipalDashboard = () => {
                             <div className="relative">
                               <Users className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                               <select 
-                                onChange={(e) => {
-                                  // In a real app, this would trigger a batch generation process
-                                  if (e.target.value) {
-                                    alert(`Class report generation for ${e.target.value} initiated. This will generate a combined PDF for all students in the class.`);
-                                    e.target.value = '';
-                                  }
-                                }}
+                                value={reportConfig.selectedClass}
+                                onChange={(e) => setReportConfig({...reportConfig, selectedClass: e.target.value})}
                                 className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20 appearance-none"
                               >
-                                <option value="">Or generate for entire class...</option>
+                                <option value="All">Or generate for entire class...</option>
                                 {classes.map(c => (
                                   <option key={c.id} value={c.name}>{c.name}</option>
                                 ))}
@@ -2773,7 +3268,19 @@ export const PrincipalDashboard = () => {
 
                         {/* Step 2: Select Exams */}
                         <div className="space-y-4">
-                          <label className="text-sm font-black text-kenya-black uppercase tracking-wider">2. Include Examinations</label>
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-black text-kenya-black uppercase tracking-wider">2. Include Examinations</label>
+                            {reportConfig.selectedClass !== 'All' && reportConfig.selectedExamIds.length > 0 && (
+                              <Button 
+                                size="sm" 
+                                onClick={generateAllClassReports}
+                                className="gap-2 bg-kenya-black hover:bg-kenya-black/90"
+                              >
+                                <Download className="w-4 h-4" />
+                                Generate Class ZIP
+                              </Button>
+                            )}
+                          </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {exams.map(exam => (
                               <label key={exam.id} className={`flex items-center gap-3 p-4 rounded-xl border cursor-pointer transition-all ${reportConfig.selectedExamIds.includes(exam.id) ? 'bg-kenya-green/5 border-kenya-green' : 'bg-gray-50 border-gray-100 hover:border-gray-200'}`}>
@@ -3088,28 +3595,6 @@ export const PrincipalDashboard = () => {
           </div>
         </div>
 
-        {/* Edit Confirm Modal */}
-        {showEditConfirmModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-kenya-black/60 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl border border-gray-100 text-center"
-            >
-              <div className="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                <AlertTriangle className="w-8 h-8 text-yellow-600" />
-              </div>
-              <h3 className="text-2xl font-bold text-kenya-black mb-2">Confirm Changes</h3>
-              <p className="text-gray-500 mb-8">Are you sure you want to save these changes to the marks? This action will be logged.</p>
-              
-              <div className="flex gap-4">
-                <Button variant="secondary" onClick={() => setShowEditConfirmModal(false)} className="flex-1">Cancel</Button>
-                <Button onClick={saveEditedMarks} className="flex-1">Confirm & Save</Button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-
         {/* Add Staff Modal */}
         {showAddStaffModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-kenya-black/60 backdrop-blur-sm">
@@ -3153,47 +3638,99 @@ export const PrincipalDashboard = () => {
                   </select>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-kenya-black ml-1">Assigned Learning Areas</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {learningAreas.map(la => (
-                      <label key={la} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-100 cursor-pointer">
-                        <input 
-                          type="checkbox"
-                          checked={newStaff.assignedSubjects.includes(la)}
-                          onChange={(e) => {
-                            const subjects = e.target.checked 
-                              ? [...newStaff.assignedSubjects, la]
-                              : newStaff.assignedSubjects.filter(s => s !== la);
-                            setNewStaff({...newStaff, assignedSubjects: subjects});
-                          }}
-                          className="w-4 h-4 rounded border-gray-300 text-kenya-green focus:ring-kenya-green"
-                        />
-                        <span className="text-xs font-medium text-gray-600">{la}</span>
-                      </label>
-                    ))}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-kenya-black ml-1">Teaching Assignments</label>
+                    <button 
+                      type="button"
+                      onClick={() => setNewStaff({
+                        ...newStaff, 
+                        assignments: [...newStaff.assignments, { classId: '', streamId: '', subject: '' }]
+                      })}
+                      className="text-xs font-bold text-kenya-green hover:underline flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Add Assignment
+                    </button>
                   </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-kenya-black ml-1">Assigned Classes</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {classes.map(c => (
-                      <label key={c.id} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-100 cursor-pointer">
-                        <input 
-                          type="checkbox"
-                          checked={newStaff.assignedClasses.includes(c.name)}
-                          onChange={(e) => {
-                            const classesList = e.target.checked 
-                              ? [...newStaff.assignedClasses, c.name]
-                              : newStaff.assignedClasses.filter(cls => cls !== c.name);
-                            setNewStaff({...newStaff, assignedClasses: classesList});
+                  
+                  <div className="space-y-3">
+                    {newStaff.assignments.map((assignment, index) => (
+                      <div key={index} className="p-4 bg-gray-50 rounded-xl border border-gray-100 space-y-3 relative">
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const updated = [...newStaff.assignments];
+                            updated.splice(index, 1);
+                            setNewStaff({ ...newStaff, assignments: updated });
                           }}
-                          className="w-4 h-4 rounded border-gray-300 text-kenya-green focus:ring-kenya-green"
-                        />
-                        <span className="text-xs font-medium text-gray-600">{c.name}</span>
-                      </label>
+                          className="absolute top-2 right-2 p-1 text-gray-400 hover:text-red-500"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase">Class</label>
+                            <select 
+                              value={assignment.classId}
+                              onChange={(e) => {
+                                const updated = [...newStaff.assignments];
+                                updated[index].classId = e.target.value;
+                                updated[index].streamId = ''; // Reset stream when class changes
+                                setNewStaff({ ...newStaff, assignments: updated });
+                              }}
+                              className="w-full px-2 py-2 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none"
+                            >
+                              <option value="">Select Class</option>
+                              {classes.map(c => (
+                                <option key={c.id} value={c.id}>{c.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase">Stream</label>
+                            <select 
+                              value={assignment.streamId}
+                              onChange={(e) => {
+                                const updated = [...newStaff.assignments];
+                                updated[index].streamId = e.target.value;
+                                setNewStaff({ ...newStaff, assignments: updated });
+                              }}
+                              className="w-full px-2 py-2 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none"
+                            >
+                              <option value="">All Streams</option>
+                              {streams.filter(s => s.classId === assignment.classId).map(s => (
+                                <option key={s.id} value={s.id}>{s.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-gray-500 uppercase">Subject</label>
+                          <select 
+                            value={assignment.subject}
+                            onChange={(e) => {
+                              const updated = [...newStaff.assignments];
+                              updated[index].subject = e.target.value;
+                              setNewStaff({ ...newStaff, assignments: updated });
+                            }}
+                            className="w-full px-2 py-2 bg-white border border-gray-200 rounded-lg text-xs focus:outline-none"
+                          >
+                            <option value="">Select Subject</option>
+                            {learningAreas.map(la => (
+                              <option key={la} value={la}>{la}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
                     ))}
+                    
+                    {newStaff.assignments.length === 0 && (
+                      <div className="text-center py-6 border-2 border-dashed border-gray-100 rounded-xl">
+                        <p className="text-xs text-gray-400">No assignments added yet.</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3270,12 +3807,42 @@ export const PrincipalDashboard = () => {
             >
               <div className="flex items-center justify-between mb-8">
                 <h3 className="text-2xl font-bold text-kenya-black">{editingStudent ? 'Edit Learner' : 'Add Individual Learner'}</h3>
-                <button onClick={() => { setShowAddStudentModal(false); setEditingStudent(null); setNewStudent({ name: '', adm: '', class: 'Form 1' }); }} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                <button onClick={() => { setShowAddStudentModal(false); setEditingStudent(null); setNewStudent({ name: '', adm: '', class: 'Form 1', streamId: '' }); }} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <form onSubmit={handleAddStudent} className="space-y-6">
+                <div className="flex justify-center mb-6">
+                  <div className="relative group">
+                    <div className="w-24 h-24 bg-gray-100 rounded-2xl overflow-hidden border-2 border-dashed border-gray-200 flex items-center justify-center">
+                      {newStudent.profile_image ? (
+                        <img src={newStudent.profile_image} alt="Preview" className="w-full h-full object-cover" />
+                      ) : (
+                        <Camera className="w-8 h-8 text-gray-300" />
+                      )}
+                    </div>
+                    <label className="absolute inset-0 cursor-pointer flex items-center justify-center bg-kenya-black/40 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl">
+                      <Upload className="w-6 h-6 text-white" />
+                      <input 
+                        type="file" 
+                        className="hidden" 
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setNewStudent({...newStudent, profile_image: reader.result as string});
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                        }}
+                      />
+                    </label>
+                  </div>
+                </div>
+
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-kenya-black ml-1">Full Name</label>
                   <input 
@@ -3287,28 +3854,59 @@ export const PrincipalDashboard = () => {
                     placeholder="e.g. John Doe"
                   />
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-kenya-black ml-1">Admission Number</label>
-                  <input 
-                    type="text" 
-                    required
-                    value={newStudent.adm}
-                    onChange={(e) => setNewStudent({...newStudent, adm: e.target.value})}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
-                    placeholder="e.g. ADM-2024-001"
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-kenya-black ml-1">Admission Number</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={newStudent.adm}
+                      onChange={(e) => setNewStudent({...newStudent, adm: e.target.value})}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                      placeholder="e.g. ADM-2024-001"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-kenya-black ml-1">Gender</label>
+                    <select 
+                      value={newStudent.gender}
+                      onChange={(e) => setNewStudent({...newStudent, gender: e.target.value})}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                    </select>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-kenya-black ml-1">Class / Grade</label>
-                  <select 
-                    value={newStudent.class}
-                    onChange={(e) => setNewStudent({...newStudent, class: e.target.value})}
-                    className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
-                  >
-                    {classes.map(c => (
-                      <option key={c.id} value={c.name}>{c.name}</option>
-                    ))}
-                  </select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-kenya-black ml-1">Class / Grade</label>
+                    <select 
+                      value={newStudent.class}
+                      onChange={(e) => setNewStudent({...newStudent, class: e.target.value, streamId: ''})}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                    >
+                      {classes.map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-kenya-black ml-1">Stream</label>
+                    <select 
+                      value={newStudent.streamId}
+                      onChange={(e) => setNewStudent({...newStudent, streamId: e.target.value})}
+                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
+                    >
+                      <option value="">Select Stream</option>
+                      {streams.filter(s => {
+                        const cls = classes.find(c => c.name === newStudent.class);
+                        return cls && s.classId === cls.id;
+                      }).map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <Button type="submit" className="w-full py-4 rounded-xl font-bold">{editingStudent ? 'Update Learner' : 'Register Learner'}</Button>
               </form>
@@ -3325,7 +3923,7 @@ export const PrincipalDashboard = () => {
             >
               <div className="flex items-center justify-between mb-8">
                 <h3 className="text-2xl font-bold text-kenya-black">{editingClass ? 'Edit Class' : 'Add New Class'}</h3>
-                <button onClick={() => { setShowAddClassModal(false); setEditingClass(null); setNewClass({ name: '', teacherId: '', capacity: 40 }); }} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                <button onClick={() => { setShowAddClassModal(false); setEditingClass(null); setNewClass({ name: '', teacherId: '', capacity: 40, streams: [] }); }} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
@@ -3339,8 +3937,43 @@ export const PrincipalDashboard = () => {
                     value={newClass.name}
                     onChange={(e) => setNewClass({...newClass, name: e.target.value})}
                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-kenya-green/20"
-                    placeholder="e.g. Form 1A"
+                    placeholder="e.g. Form 1"
                   />
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-kenya-black ml-1">Streams</label>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        const name = prompt('Enter stream name (e.g. A, B, East, West):');
+                        if (name && !newClass.streams.includes(name)) {
+                          setNewClass({ ...newClass, streams: [...newClass.streams, name] });
+                        }
+                      }}
+                      className="text-xs font-bold text-kenya-green hover:underline flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" /> Add Stream
+                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {newClass.streams.map(stream => (
+                      <div key={stream} className="flex items-center gap-2 px-3 py-1.5 bg-kenya-green/10 text-kenya-green rounded-lg border border-kenya-green/20">
+                        <span className="text-xs font-bold">{stream}</span>
+                        <button 
+                          type="button"
+                          onClick={() => setNewClass({ ...newClass, streams: newClass.streams.filter(s => s !== stream) })}
+                          className="hover:text-red-500"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {newClass.streams.length === 0 && (
+                      <p className="text-xs text-gray-400 italic">No streams defined. This class will have a single default stream.</p>
+                    )}
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-kenya-black ml-1">Class Teacher</label>
@@ -3429,7 +4062,35 @@ export const PrincipalDashboard = () => {
           </div>
         )}
 
-        {/* Report Preview Modal */}
+        {/* Edit Exam Confirmation Modal */}
+      {showEditConfirmation && (
+        <div className="fixed inset-0 bg-kenya-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl"
+          >
+            <div className="w-16 h-16 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mb-6">
+              <AlertTriangle className="w-8 h-8" />
+            </div>
+            <h3 className="text-2xl font-bold text-kenya-black mb-2">Confirm Changes</h3>
+            <p className="text-gray-600 mb-8">
+              You are about to modify the configuration for <span className="font-bold">{(exams.find(e => e.id === selectedEditExamId))?.title}</span>. 
+              This may affect how results are calculated and ranked. Are you sure you want to proceed?
+            </p>
+            <div className="flex gap-3">
+              <Button variant="ghost" className="flex-1" onClick={() => setShowEditConfirmation(false)}>
+                Cancel
+              </Button>
+              <Button className="flex-1 bg-kenya-green hover:bg-kenya-green/90" onClick={handleSaveExamEdit}>
+                Confirm & Save
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Report Preview Modal */}
         {showReportPreview && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-kenya-black/60 backdrop-blur-sm">
             <motion.div 
@@ -3443,13 +4104,13 @@ export const PrincipalDashboard = () => {
                   <p className="text-sm text-gray-500">Review the document before printing or distribution.</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" onClick={generateExcel} className="flex items-center gap-2">
-                    <FileSpreadsheet className="w-4 h-4" />
-                    Export Excel
-                  </Button>
-                  <Button variant="ghost" onClick={generatePDF} className="flex items-center gap-2">
+                  <Button variant="ghost" onClick={downloadReportPDF} className="flex items-center gap-2">
                     <Download className="w-4 h-4" />
                     Download PDF
+                  </Button>
+                  <Button variant="ghost" onClick={() => window.print()} className="flex items-center gap-2">
+                    <Printer className="w-4 h-4" />
+                    Print
                   </Button>
                   <button onClick={() => setShowReportPreview(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                     <X className="w-5 h-5" />
@@ -3458,197 +4119,306 @@ export const PrincipalDashboard = () => {
               </div>
 
               <div className="flex-1 overflow-y-auto pr-2 bg-gray-50 p-8 rounded-3xl border border-gray-100">
-                <div className="bg-white shadow-sm p-12 min-h-[1000px] border border-gray-200 mx-auto max-w-[800px]">
-                  {reportConfig.includeLetterhead && <Letterhead settings={schoolSettings} />}
-                  
-                  <div className="text-center mb-8">
-                    <h1 className="text-xl font-black text-kenya-black uppercase border-b-2 border-kenya-black inline-block pb-1">Academic Performance Report</h1>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-8 mb-8 text-sm">
-                    <div className="space-y-1">
-                      <p><span className="font-bold text-gray-400 uppercase text-[10px]">Student Name:</span> <span className="font-black text-kenya-black">{students.find(s => s.id === reportConfig.selectedStudentId)?.name}</span></p>
-                      <p><span className="font-bold text-gray-400 uppercase text-[10px]">Admission No:</span> <span className="font-black text-kenya-black">{students.find(s => s.id === reportConfig.selectedStudentId)?.adm}</span></p>
-                    </div>
-                    <div className="space-y-1 text-right">
-                      <p><span className="font-bold text-gray-400 uppercase text-[10px]">Class/Grade:</span> <span className="font-black text-kenya-black">{students.find(s => s.id === reportConfig.selectedStudentId)?.class}</span></p>
-                      <p><span className="font-bold text-gray-400 uppercase text-[10px]">Academic Year:</span> <span className="font-black text-kenya-black">2024</span></p>
-                    </div>
-                  </div>
-
-                  <table className="w-full border-collapse mb-8">
-                    <thead>
-                      <tr className="bg-gray-50">
-                        <th className="border border-gray-200 p-3 text-left text-[10px] font-black uppercase text-gray-500">Learning Area</th>
-                        <th className="border border-gray-200 p-3 text-left text-[10px] font-black uppercase text-gray-500">Subject Teacher</th>
-                        {reportConfig.selectedExamIds.map(id => (
-                          <th key={id} className="border border-gray-200 p-3 text-center text-[10px] font-black uppercase text-gray-500">
-                            {exams.find(e => e.id === id)?.title}
-                          </th>
-                        ))}
-                        {reportConfig.includeAverages && (
-                          <th className="border border-gray-200 p-3 text-center text-[10px] font-black uppercase text-kenya-green">Average</th>
+                <div className="bg-white shadow-sm p-8 min-h-[1100px] border border-gray-200 mx-auto max-w-[850px] font-sans text-kenya-black">
+                  {/* Header Section */}
+                  <div className="border-2 border-kenya-black p-4 mb-4">
+                    <div className="flex items-center justify-between">
+                      <div className="w-24 h-24 flex items-center justify-center">
+                        {schoolSettings.logo ? (
+                          <img src={schoolSettings.logo} alt="Logo" className="max-w-full max-h-full object-contain" />
+                        ) : (
+                          <div className="w-20 h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-[8px] text-gray-400 font-bold text-center">LOGO</div>
                         )}
-                        {reportConfig.includeGrades && (
-                          <th className="border border-gray-200 p-3 text-center text-[10px] font-black uppercase text-kenya-red">Grade</th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {learningAreas.map(subject => {
-                        const student = students.find(s => s.id === reportConfig.selectedStudentId);
-                        const subjectTeacher = staff.find(t => 
-                          t.assignedSubjects?.includes(subject) && 
-                          t.assignedClasses?.includes(student?.class)
-                        );
-
-                        const scores = reportConfig.selectedExamIds.map(id => {
-                          const mark = marks.find(m => m.studentId === reportConfig.selectedStudentId && m.examId === id && m.subject === subject);
-                          return mark ? parseFloat(mark.score) : null;
-                        });
-                        const validScores = scores.filter(s => s !== null) as number[];
-                        const avg = validScores.length > 0 ? validScores.reduce((a, b) => a + b, 0) / validScores.length : null;
-                        const grade = avg !== null ? gradingSystem.find(g => avg >= g.min && avg <= g.max)?.grade || '--' : '--';
-
-                        return (
-                          <tr key={subject}>
-                            <td className="border border-gray-200 p-3 font-bold text-kenya-black text-sm">{subject}</td>
-                            <td className="border border-gray-200 p-3 text-gray-500 text-[11px] font-medium italic">{subjectTeacher?.name || 'Not Assigned'}</td>
-                            {scores.map((score, idx) => (
-                              <td key={idx} className="border border-gray-200 p-3 text-center font-mono text-sm">{score !== null ? score : '--'}</td>
-                            ))}
-                            {reportConfig.includeAverages && (
-                              <td className="border border-gray-200 p-3 text-center font-black text-kenya-green text-sm">{avg !== null ? avg.toFixed(1) : '--'}</td>
-                            )}
-                            {reportConfig.includeGrades && (
-                              <td className="border border-gray-200 p-3 text-center font-black text-kenya-red text-sm">{grade}</td>
-                            )}
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-
-                  {reportConfig.includePerformanceTrend && (
-                    <div className="mt-12 space-y-8">
-                      <div className="border-t-2 border-kenya-black pt-6">
-                        <h3 className="text-lg font-black text-kenya-black uppercase mb-6 flex items-center gap-2">
-                          <BarChart3 className="w-5 h-5 text-kenya-green" />
-                          Performance Trend Analysis
-                        </h3>
-                        
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
-                          {/* Graph Section */}
-                          <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
-                            <p className="text-[10px] font-black text-gray-400 uppercase mb-4 tracking-widest">Mean Score Trend</p>
-                            <div className="h-64 w-full">
-                              <ResponsiveContainer width="100%" height="100%">
-                                {reportConfig.graphType === 'bar' ? (
-                                  <BarChart data={reportConfig.selectedExamIds.map(id => {
-                                    const exam = exams.find(e => e.id === id);
-                                    const studentMarks = marks.filter(m => m.studentId === reportConfig.selectedStudentId && m.examId === id);
-                                    const total = studentMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
-                                    const mean = studentMarks.length > 0 ? total / studentMarks.length : 0;
-                                    return { name: exam?.title || 'Exam', mean: parseFloat(mean.toFixed(1)) };
-                                  })}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                                    <XAxis dataKey="name" fontSize={10} fontWeight="bold" tick={{fill: '#141414'}} axisLine={false} tickLine={false} />
-                                    <YAxis fontSize={10} fontWeight="bold" tick={{fill: '#141414'}} axisLine={false} tickLine={false} domain={[0, 100]} />
-                                    <Tooltip 
-                                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                      cursor={{ fill: '#F3F4F6' }}
-                                    />
-                                    <Bar dataKey="mean" fill="#006837" radius={[4, 4, 0, 0]} barSize={40} />
-                                  </BarChart>
-                                ) : (
-                                  <LineChart data={reportConfig.selectedExamIds.map(id => {
-                                    const exam = exams.find(e => e.id === id);
-                                    const studentMarks = marks.filter(m => m.studentId === reportConfig.selectedStudentId && m.examId === id);
-                                    const total = studentMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
-                                    const mean = studentMarks.length > 0 ? total / studentMarks.length : 0;
-                                    return { name: exam?.title || 'Exam', mean: parseFloat(mean.toFixed(1)) };
-                                  })}>
-                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
-                                    <XAxis dataKey="name" fontSize={10} fontWeight="bold" tick={{fill: '#141414'}} axisLine={false} tickLine={false} />
-                                    <YAxis fontSize={10} fontWeight="bold" tick={{fill: '#141414'}} axisLine={false} tickLine={false} domain={[0, 100]} />
-                                    <Tooltip 
-                                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                                    />
-                                    <Line type="monotone" dataKey="mean" stroke="#006837" strokeWidth={4} dot={{ r: 6, fill: '#006837', strokeWidth: 2, stroke: '#fff' }} activeDot={{ r: 8 }} />
-                                  </LineChart>
-                                )}
-                              </ResponsiveContainer>
-                            </div>
-                          </div>
-
-                          {/* Position Table Section */}
-                          <div className="space-y-4">
-                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Termly Position Summary</p>
-                            <div className="overflow-hidden rounded-2xl border border-gray-100">
-                              <table className="w-full text-left text-xs">
-                                <thead className="bg-gray-50 border-b border-gray-100">
-                                  <tr>
-                                    <th className="px-4 py-3 font-black text-kenya-black uppercase">Exam / Term</th>
-                                    <th className="px-4 py-3 font-black text-kenya-black uppercase text-center">Mean</th>
-                                    <th className="px-4 py-3 font-black text-kenya-black uppercase text-center">Pos</th>
-                                    <th className="px-4 py-3 font-black text-kenya-black uppercase text-center">Out of</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50">
-                                  {reportConfig.selectedExamIds.map(id => {
-                                    const exam = exams.find(e => e.id === id);
-                                    if (!exam) return null;
-                                    
-                                    const student = students.find(s => s.id === reportConfig.selectedStudentId);
-                                    const classStudents = students.filter(s => s.class === student?.class);
-                                    
-                                    const examMarks = marks.filter(m => m.examId === id);
-                                    
-                                    // Calculate total scores for all students in the class
-                                    const rankings = classStudents.map(s => {
-                                      const sMarks = examMarks.filter(m => m.studentId === s.id);
-                                      const total = sMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
-                                      return { id: s.id, total };
-                                    }).sort((a, b) => b.total - a.total);
-                                    
-                                    const position = rankings.findIndex(r => r.id === reportConfig.selectedStudentId) + 1;
-                                    const studentMarks = examMarks.filter(m => m.studentId === reportConfig.selectedStudentId);
-                                    const total = studentMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
-                                    const mean = studentMarks.length > 0 ? total / studentMarks.length : 0;
-
-                                    return (
-                                      <tr key={id} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="px-4 py-3 font-bold text-kenya-black">
-                                          {exam.title}
-                                          <span className="block text-[10px] text-gray-400 font-medium">{exam.term} {exam.year}</span>
-                                        </td>
-                                        <td className="px-4 py-3 text-center font-black text-kenya-green">{mean.toFixed(1)}</td>
-                                        <td className="px-4 py-3 text-center">
-                                          <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-kenya-black text-white font-black text-[10px]">
-                                            {position}
-                                          </span>
-                                        </td>
-                                        <td className="px-4 py-3 text-center font-bold text-gray-400">{classStudents.length}</td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
+                      </div>
+                      <div className="flex-1 text-center px-4">
+                        <h1 className="text-2xl font-black uppercase tracking-tight mb-1">{schoolSettings.name || 'SCHOOL NAME'}</h1>
+                        <p className="text-xs font-bold mb-1">P.O BOX {schoolSettings.address || '923-50403'}</p>
+                        <p className="text-xs font-bold mb-2">Website: {schoolSettings.website || 'www.school.ac.ke'}</p>
+                        <div className="inline-block border-t-2 border-b-2 border-kenya-black px-8 py-1">
+                          <h2 className="text-lg font-black uppercase">REPORT FORM</h2>
                         </div>
                       </div>
+                      <div className="w-24 h-24 border-2 border-gray-200 rounded-lg flex items-center justify-center overflow-hidden">
+                        {students.find(s => s.id === reportConfig.selectedStudentId)?.photo ? (
+                          <img src={students.find(s => s.id === reportConfig.selectedStudentId)?.photo} alt="Student" className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="text-[8px] text-gray-300 font-bold uppercase text-center p-2">Student Photo</div>
+                        )}
+                      </div>
                     </div>
-                  )}
+                  </div>
 
-                  <div className="mt-12 grid grid-cols-2 gap-12">
-                    <div className="border-t border-gray-200 pt-4">
-                      <p className="text-[10px] font-black text-gray-400 uppercase mb-8">Class Teacher's Remarks</p>
-                      <div className="h-12 border-b border-gray-100 italic text-gray-400 text-xs">Sign: ____________________</div>
+                  {/* Student Details Section */}
+                  {(() => {
+                    const student = students.find(s => s.id === reportConfig.selectedStudentId);
+                    const classStudents = students.filter(s => s.class === student?.class);
+                    const allStudents = students;
+                    
+                    // Calculate overall rank
+                    const overallRankings = allStudents.map(s => {
+                      const sMarks = marks.filter(m => reportConfig.selectedExamIds.includes(m.examId) && m.studentId === s.id);
+                      const total = sMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+                      return { id: s.id, total };
+                    }).sort((a, b) => b.total - a.total);
+                    const overallRank = overallRankings.findIndex(r => r.id === student?.id) + 1;
+
+                    // Calculate class rank
+                    const classRankings = classStudents.map(s => {
+                      const sMarks = marks.filter(m => reportConfig.selectedExamIds.includes(m.examId) && m.studentId === s.id);
+                      const total = sMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+                      return { id: s.id, total };
+                    }).sort((a, b) => b.total - a.total);
+                    const classRank = classRankings.findIndex(r => r.id === student?.id) + 1;
+
+                    return (
+                      <div className="border-2 border-kenya-black p-4 mb-4">
+                        <div className="grid grid-cols-3 gap-y-2 text-[11px]">
+                          <p><span className="font-bold">Adm No :</span> <span className="font-black">{student?.adm}</span></p>
+                          <p><span className="font-bold">Full Name :</span> <span className="font-black uppercase">{student?.name}</span></p>
+                          <p><span className="font-bold">Kpsea :</span> <span className="font-black"></span></p>
+                          
+                          <p><span className="font-bold">UPI No :</span> <span className="font-black">A23WERTYST</span></p>
+                          <p><span className="font-bold">Grade :</span> <span className="font-black uppercase">{student?.class} A 2026</span></p>
+                          <p><span className="font-bold">Term :</span> <span className="font-black">1</span></p>
+                          
+                          <p><span className="font-bold">House :</span> <span className="font-black"></span></p>
+                          <p><span className="font-bold">Rank :</span> <span className="font-black">{classRank} (out of {classStudents.length})</span></p>
+                          <p><span className="font-bold">Rank (Overall) :</span> <span className="font-black">{overallRank} (out of {allStudents.length})</span></p>
+                          
+                          <p><span className="font-bold">Year :</span> <span className="font-black">2026</span></p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Performance Table */}
+                  <div className="mb-4">
+                    <table className="w-full border-2 border-kenya-black border-collapse text-[10px]">
+                      <thead>
+                        <tr className="bg-gray-50">
+                          <th className="border border-kenya-black p-2 text-left font-black uppercase">LEARNING AREA</th>
+                          <th className="border border-kenya-black p-1 text-center font-black uppercase w-24">
+                            <div className="text-[8px]">Exam 1 opener</div>
+                            <div className="text-[7px] font-normal">out of 100</div>
+                            <div className="flex justify-between px-2 mt-1 border-t border-kenya-black pt-1">
+                              <span>Score</span>
+                              <span className="border-l border-kenya-black pl-2">Grade</span>
+                            </div>
+                          </th>
+                          <th className="border border-kenya-black p-2 text-center font-black uppercase">Score</th>
+                          <th className="border border-kenya-black p-2 text-center font-black uppercase">Grade</th>
+                          <th className="border border-kenya-black p-2 text-center font-black uppercase">%</th>
+                          <th className="border border-kenya-black p-2 text-center font-black uppercase">Grd</th>
+                          <th className="border border-kenya-black p-2 text-center font-black uppercase w-16">
+                            <div className="text-[8px] leading-tight">Learning Area Rank</div>
+                          </th>
+                          <th className="border border-kenya-black p-2 text-left font-black uppercase min-w-[150px]">Remarks</th>
+                          <th className="border border-kenya-black p-2 text-left font-black uppercase">Teacher</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {learningAreas.map(subject => {
+                          const student = students.find(s => s.id === reportConfig.selectedStudentId);
+                          const subjectTeacher = staff.find(t => 
+                            t.assignedSubjects?.includes(subject) && 
+                            t.assignedClasses?.includes(student?.class)
+                          );
+
+                          const examId = reportConfig.selectedExamIds[0];
+                          const mark = marks.find(m => m.studentId === reportConfig.selectedStudentId && m.examId === examId && m.subject === subject);
+                          const score = mark ? parseFloat(mark.score) : null;
+                          const gradeObj = gradingSystem.find(g => score !== null && score >= g.min && score <= g.max);
+                          const grade = gradeObj ? gradeObj.grade : '--';
+
+                          // Calculate subject rank
+                          const classStudents = students.filter(s => s.class === student?.class);
+                          const subjectRankings = classStudents.map(s => {
+                            const sMark = marks.find(m => m.studentId === s.id && m.examId === examId && m.subject === subject);
+                            return { id: s.id, score: sMark ? parseFloat(sMark.score) : 0 };
+                          }).sort((a, b) => b.score - a.score);
+                          const subjectRank = subjectRankings.findIndex(r => r.id === student?.id) + 1;
+
+                          return (
+                            <tr key={subject} className="h-8">
+                              <td className="border border-kenya-black p-2 font-bold uppercase">{subject}</td>
+                              <td className="border border-kenya-black p-0 text-center">
+                                <div className="flex h-full">
+                                  <div className="flex-1 flex items-center justify-center border-r border-kenya-black">{score !== null ? score : ''}</div>
+                                  <div className="flex-1 flex items-center justify-center">{grade !== '--' ? grade : ''}</div>
+                                </div>
+                              </td>
+                              <td className="border border-kenya-black p-2 text-center"></td>
+                              <td className="border border-kenya-black p-2 text-center"></td>
+                              <td className="border border-kenya-black p-2 text-center font-bold">{score !== null ? score + '%' : ''}</td>
+                              <td className="border border-kenya-black p-2 text-center font-bold">{grade !== '--' ? grade : ''}</td>
+                              <td className="border border-kenya-black p-2 text-center font-bold">{score !== null ? `${subjectRank}/${classStudents.length}` : ''}</td>
+                              <td className="border border-kenya-black p-2 italic text-[9px]">
+                                {score !== null ? (score >= 50 ? 'Meeting Expectations' : 'Approaching Expectations') : ''}
+                              </td>
+                              <td className="border border-kenya-black p-2 text-[9px] leading-tight">
+                                <div className="font-bold">Teacher</div>
+                                <div className="uppercase italic">{subjectTeacher?.name.split(' ')[0] || 'N/A'}</div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {/* Summary Row */}
+                        {(() => {
+                          const student = students.find(s => s.id === reportConfig.selectedStudentId);
+                          const examId = reportConfig.selectedExamIds[0];
+                          const studentMarks = marks.filter(m => m.studentId === student?.id && m.examId === examId);
+                          const total = studentMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+                          const avg = studentMarks.length > 0 ? total / studentMarks.length : 0;
+                          const gradeObj = gradingSystem.find(g => avg >= g.min && avg <= g.max);
+                          
+                          return (
+                            <tr className="bg-gray-50 font-black text-[11px]">
+                              <td colSpan={9} className="border border-kenya-black p-3">
+                                <div className="flex justify-between items-center">
+                                  <p>Total Marks : <span className="text-lg">{total.toFixed(0)}</span> (out of {learningAreas.length * 100})</p>
+                                  <p>Average Marks : <span className="text-lg">{avg.toFixed(0)} {gradeObj?.grade}</span></p>
+                                  <p>Value Added : <span className="text-lg">--</span></p>
+                                  <p>V.A from Kpsea : <span className="text-lg">--</span></p>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Progressive Summary & Chart Section */}
+                  <div className="grid grid-cols-2 gap-4 mb-6">
+                    <div className="border-2 border-kenya-black p-4 flex flex-col items-center justify-center relative min-h-[200px]">
+                      <div className="absolute left-2 top-1/2 -rotate-90 origin-left text-[10px] font-bold uppercase tracking-widest text-gray-400">Performance Level</div>
+                      <div className="w-full h-full border border-gray-100 flex items-center justify-center text-[10px] text-gray-300 italic">
+                        Chart Visualization Placeholder
+                      </div>
+                      <div className="absolute bottom-2 left-2 text-[8px] font-bold text-gray-400">KPSEA T1 - GRADE 9</div>
                     </div>
-                    <div className="border-t border-gray-200 pt-4">
-                      <p className="text-[10px] font-black text-gray-400 uppercase mb-8">Principal's Remarks</p>
-                      <div className="h-12 border-b border-gray-100 italic text-gray-400 text-xs">Sign: ____________________</div>
+                    
+                    <div className="space-y-2">
+                      <h3 className="text-xs font-black uppercase text-center border-b-2 border-kenya-black pb-1">PROGRESSIVE SUMMARY</h3>
+                      <table className="w-full border-2 border-kenya-black border-collapse text-[9px]">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="border border-kenya-black p-1"></th>
+                            <th colSpan={3} className="border border-kenya-black p-1 uppercase">GRADE 7</th>
+                            <th colSpan={3} className="border border-kenya-black p-1 uppercase">GRADE 8</th>
+                            <th colSpan={3} className="border border-kenya-black p-1 uppercase">GRADE 9</th>
+                          </tr>
+                          <tr className="bg-gray-100">
+                            <th className="border border-kenya-black p-1"></th>
+                            <th className="border border-kenya-black p-1">T 1</th>
+                            <th className="border border-kenya-black p-1">T 2</th>
+                            <th className="border border-kenya-black p-1">T 3</th>
+                            <th className="border border-kenya-black p-1">T 1</th>
+                            <th className="border border-kenya-black p-1">T 2</th>
+                            <th className="border border-kenya-black p-1">T 3</th>
+                            <th className="border border-kenya-black p-1">T 1</th>
+                            <th className="border border-kenya-black p-1">T 2</th>
+                            <th className="border border-kenya-black p-1">T 3</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            const student = students.find(s => s.id === reportConfig.selectedStudentId);
+                            const examId = reportConfig.selectedExamIds[0];
+                            const studentMarks = marks.filter(m => m.studentId === student?.id && m.examId === examId);
+                            const total = studentMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+                            const avg = studentMarks.length > 0 ? total / studentMarks.length : 0;
+                            const gradeObj = gradingSystem.find(g => avg >= g.min && avg <= g.max);
+                            
+                            const classStudents = students.filter(s => s.class === student?.class);
+                            const rankings = classStudents.map(s => {
+                              const sMarks = marks.filter(m => m.examId === examId && m.studentId === s.id);
+                              const t = sMarks.reduce((sum, m) => sum + parseFloat(m.score as string), 0);
+                              return { id: s.id, total: t };
+                            }).sort((a, b) => b.total - a.total);
+                            const position = rankings.findIndex(r => r.id === student?.id) + 1;
+
+                            return (
+                              <>
+                                <tr className="h-6">
+                                  <td className="border border-kenya-black p-1 font-bold">Marks</td>
+                                  <td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                  <td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                  <td className="border border-kenya-black p-1 font-black text-center">{total.toFixed(0)}</td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                </tr>
+                                <tr className="h-6">
+                                  <td className="border border-kenya-black p-1 font-bold">Mean score</td>
+                                  <td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                  <td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                  <td className="border border-kenya-black p-1 font-black text-center">{avg.toFixed(0)}</td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                </tr>
+                                <tr className="h-6">
+                                  <td className="border border-kenya-black p-1 font-bold">Performance Level</td>
+                                  <td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                  <td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                  <td className="border border-kenya-black p-1 font-black text-center">{gradeObj?.grade}</td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                </tr>
+                                <tr className="h-6">
+                                  <td className="border border-kenya-black p-1 font-bold">Points</td>
+                                  <td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                  <td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                  <td className="border border-kenya-black p-1 font-black text-center">{total.toFixed(0)}</td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                </tr>
+                                <tr className="h-6">
+                                  <td className="border border-kenya-black p-1 font-bold">Position</td>
+                                  <td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                  <td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                  <td className="border border-kenya-black p-1 font-black text-center">{position}</td><td className="border border-kenya-black p-1"></td><td className="border border-kenya-black p-1"></td>
+                                </tr>
+                              </>
+                            );
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Remarks Section */}
+                  <div className="border-2 border-kenya-black p-4 mb-4 space-y-4">
+                    <div className="flex gap-4">
+                      <div className="flex-1">
+                        <p className="text-[10px] font-black uppercase mb-1">GRADE TEACHER:</p>
+                        <div className="h-8 border-b border-gray-200"></div>
+                        <p className="text-[10px] font-black uppercase mt-2 mb-1">COMMENTS:</p>
+                        <div className="h-8 border-b border-gray-200"></div>
+                      </div>
+                      <div className="w-40 border border-gray-200 rounded p-1 flex flex-col items-center justify-end">
+                        <div className="w-full border-t border-gray-200 text-[8px] text-center pt-1 font-bold uppercase">Signature</div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-4">
+                      <div className="flex-1">
+                        <p className="text-[10px] font-black uppercase mb-1">PRINCIPAL:</p>
+                        <div className="h-8 border-b border-gray-200"></div>
+                        <p className="text-[10px] font-black uppercase mt-2 mb-1">COMMENTS:</p>
+                        <div className="h-8 border-b border-gray-200"></div>
+                      </div>
+                      <div className="w-40 border border-gray-200 rounded p-1 flex flex-col items-center justify-end">
+                        <div className="w-full border-t border-gray-200 text-[8px] text-center pt-1 font-bold uppercase">Signature</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Footer Section */}
+                  <div className="space-y-2 text-[10px]">
+                    <p className="font-bold">Parent's Signature: _________________________________________________________________________________</p>
+                    <div className="flex justify-between items-end pt-2">
+                      <div>
+                        <p className="font-bold">Next Term Begins On: <span className="font-black">Thursday, 26 March 2026</span></p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-black">Print Date {new Date().toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                    <div className="pt-4 text-center border-t border-gray-100">
+                      <p className="font-black italic uppercase tracking-widest">{schoolSettings.motto || 'STRIVE FOR EXCELLENCE'}</p>
+                      <p className="text-[8px] font-bold text-gray-400 mt-1">Not valid if without an official school rubber stamp</p>
                     </div>
                   </div>
                 </div>
